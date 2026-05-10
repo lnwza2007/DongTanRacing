@@ -1182,18 +1182,18 @@ void Main_task() {
   }
 
   float new_angle = ypr[1] * 180.0f / M_PI;
-  // Snap to 3 tilt positions with hysteresis to prevent jitter at boundaries.
-  // When flat  (angle1==0):  need to exceed ±18° to start tilting
-  // When tilted (angle1==±45): need to return within ±10° to go back flat
-  // สลับซ้าย-ขวาตามที่ผู้ใช้ต้องการ
-  if (angle1 == 0) {
-    if      (new_angle >= 18)   angle1 = -45;
-    else if (new_angle <= -18)  angle1 = 45;
-  } else {
-    if      (new_angle > -10 && new_angle < 10)  angle1 = 0;
-    else if (new_angle >= 10)                     angle1 = -45;
-    else                                          angle1 = 45;
+  // ── 💡 ระบบเอียงแบบสมูท (Smooth Rotation) สลับซ้าย-ขวา ──
+  float target_angle = ypr[1] * -180.0f / M_PI; // สลับซ้ายขวาด้วยการใส่ลบ (-)
+  
+  // สร้าง Deadzone ตอนตั้งตรง (ถ้าเอียงนิดเดียวไม่ถึง 5 องศา ให้ถือว่าตรงเป๊ะ)
+  if (target_angle > -5 && target_angle < 5) {
+    target_angle = 0;
   }
+  // จำกัดการเอียงสูงสุดที่ 45 องศา
+  target_angle = constrain(target_angle, -45.0f, 45.0f);
+  
+  // สมูทตัวเลข: ค่อยๆ วิ่งเข้าหาเป้าหมาย (0.15 = ความหนืด/ความสมูท)
+  angle1 += (target_angle - angle1) * 0.15f;
 
   Serial.print(gotPacket ? "[PKT] " : "[---] ");   
   Serial.print("dmpReady:");
@@ -1222,8 +1222,9 @@ void Main_task() {
   static float prevAngle1      = -999.0f;
   if (fullRedraw) { prevSpriteSpeed = -1; prevAngle1 = -999.0f; }  
 
-  if (Speed != prevSpriteSpeed || angle1 != prevAngle1) {
-    tft.setPivot(375, 160);
+  if (Speed != prevSpriteSpeed || abs(angle1 - prevAngle1) >= 1.0f) {
+    // 💡 ขยับแกนวาด Sprite ขึ้นไปข้างบน 25 พิกเซล (160 -> 135) เพื่อไม่ให้ทับชื่อ Mode
+    tft.setPivot(375, 135);
     tft.fillRect(SPD_X + 1, BODY_Y + 30, SPD_W - 2, 165, DB_BG);
 
     uint16_t col = speedColor(Speed, SPEED_LIM[mode]);
