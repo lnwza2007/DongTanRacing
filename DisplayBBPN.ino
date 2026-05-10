@@ -188,7 +188,8 @@ void IRAM_ATTR readEncoder() {
 //****************************************************************************************************//
 
 void setup(void) {
-  // ── 💡 สเต็ปแก้บั๊กกดปุ่มรีเซ็ต: ถ่วงเวลารอระบบจ่ายไฟ USB-UART ให้ตื่นเต็มตัวก่อนเริ่มอ้างอิงสถาปัตยกรรมชิป ──
+  // ── 💡 สเต็ปแก้บั๊กกดปุ่มรีเซ็ต: ถ่วงเวลารอระบบจ่ายไฟบอร์ดให้ตื่นเต็มตัวก่อนเริ่มบูต ──
+  delay(1000);                       // รอให้ไฟเลี้ยงบนบอร์ดนิ่งสนิทก่อนเริ่มทำงาน
   Serial.begin(115200);
   delay(500);                        // รอให้ท่อรับส่งข้อมูล Serial บูตตัวเองสำเร็จ
   yield();                           // สลัดภาระงาน RTOS อื่น ๆ ออกไป
@@ -856,7 +857,7 @@ uint16_t speedColor(int spd, int lim) {
 // 💡 ปรับสเกลพิกัดวาดตัวหนังสือลงกึ่งกลาง Sprite 170x160 ตัวใหม่ เพื่อป้องกันขอบตัวอักษรแหว่ง
 void drawRotatedText(String hundreds, String tens, String units, int x, int y, float angle, uint16_t col) {
   sprite.fillSprite(DB_BG);
-  sprite.setTextSize(9); // ใช้ฟอนต์ขนาด 9 โตใหญ่ดุดันอ่านง่ายขึ้นบนจอ 4 นิ้ว
+  sprite.setTextSize(4); // ลดจาก 9 เหลือ 4 จะพอดีกับกรอบ 170x160 และตัวฟอนต์ FreeMono18pt
   sprite.setTextColor(col, DB_BG);
   sprite.setTextDatum(MC_DATUM); // บังคับอ้างอิงกึ่งกลางอักษรเป๊ะ ๆ
   
@@ -868,7 +869,7 @@ void drawRotatedText(String hundreds, String tens, String units, int x, int y, f
 
 void drawRotatedText_TEN(String hundreds, String tens, String units, int x, int y, float angle, uint16_t col) {
   sprite.fillSprite(DB_BG);
-  sprite.setTextSize(9);
+  sprite.setTextSize(4);
   sprite.setTextColor(col, DB_BG);
   sprite.setTextDatum(MC_DATUM);
   
@@ -879,7 +880,7 @@ void drawRotatedText_TEN(String hundreds, String tens, String units, int x, int 
 
 void drawRotatedText_UNIT(String units, int x, int y, float angle, uint16_t col) {
   sprite.fillSprite(DB_BG);
-  sprite.setTextSize(9);
+  sprite.setTextSize(4);
   sprite.setTextColor(col, DB_BG);
   sprite.setTextDatum(MC_DATUM);
   
@@ -1181,12 +1182,18 @@ void Main_task() {
   }
 
   float new_angle = ypr[1] * 180.0f / M_PI;
-  if (abs(new_angle - angle1) > 15) {
-    angle1 = new_angle;
+  // Snap to 3 tilt positions with hysteresis to prevent jitter at boundaries.
+  // When flat  (angle1==0):  need to exceed ±18° to start tilting
+  // When tilted (angle1==±45): need to return within ±10° to go back flat
+  // สลับซ้าย-ขวาตามที่ผู้ใช้ต้องการ
+  if (angle1 == 0) {
+    if      (new_angle >= 18)   angle1 = -45;
+    else if (new_angle <= -18)  angle1 = 45;
+  } else {
+    if      (new_angle > -10 && new_angle < 10)  angle1 = 0;
+    else if (new_angle >= 10)                     angle1 = -45;
+    else                                          angle1 = 45;
   }
-  if      (angle1 > -30 && angle1 < 30)  angle1 = 0;
-  else if (angle1 >= 30)                  angle1 = 45;
-  else                                    angle1 = -45;
 
   Serial.print(gotPacket ? "[PKT] " : "[---] ");   
   Serial.print("dmpReady:");

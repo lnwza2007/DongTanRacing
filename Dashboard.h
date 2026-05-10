@@ -168,31 +168,18 @@ static void db_ringMeter(TFT_eSPI &tft,
   tft.fillCircle(cx, cy, r - w - 2, DB_BG);
 }
 
-// ── Draw centre speed panel ──────────────────────────────────
-static void db_drawSpeed(TFT_eSPI &tft,
-                          int speed,        // 0-99
-                          float pitchDeg,   // from ypr[1]*180/PI
-                          const char* modeName) {
-  int cx = SPD_X + SPD_W / 2;
-
-  // Clear speed area (avoid full screen clear)
-  tft.fillRect(SPD_X + 1, BODY_Y + 1, SPD_W - 2, BODY_H - 2, DB_BG);
-
-  // (Speed number drawn by gyro sprite in Main_task)
-  // Mode name below speed
-  tft.setTextColor(DB_CYAN, DB_BG);
-  tft.drawString(modeName, cx, BODY_Y + BODY_H / 2 + 70, 4);
-
-  // Tilt indicator bar (pitch)
+// ── Draw Tilt Needle (extracted so it can update frequently) ──
+static void db_drawTiltNeedle(TFT_eSPI &tft, float pitchDeg) {
   int tiltBarW = SPD_W - 20;
   int tiltBarX = SPD_X + 10;
   int tiltBarY = BODY_Y + BODY_H - 58;
-  // background
+  
+  // Clear just the needle area inside the bar
   tft.fillRoundRect(tiltBarX, tiltBarY, tiltBarW, 10, 3, DB_DARKGREY);
-  tft.drawRoundRect(tiltBarX - 1, tiltBarY - 1, tiltBarW + 2, 12, 4, DB_BORDER);
   // centre mark
   int midX = tiltBarX + tiltBarW / 2;
   tft.drawFastVLine(midX, tiltBarY - 3, 16, DB_GREY);
+  
   // needle (pitch mapped ±45° → bar width)
   float clampedPitch = constrain(pitchDeg, -45.0f, 45.0f);
   int needleX = midX + (int)(clampedPitch / 45.0f * (tiltBarW / 2));
@@ -200,6 +187,31 @@ static void db_drawSpeed(TFT_eSPI &tft,
   uint16_t needleCol = (abs(pitchDeg) > 30) ? DB_RED :
                        (abs(pitchDeg) > 15) ? DB_ORANGE : DB_CYAN;
   tft.fillRoundRect(needleX - 2, tiltBarY + 1, 6, 8, 2, needleCol);
+}
+
+// ── Draw centre speed panel ──────────────────────────────────
+static void db_drawSpeed(TFT_eSPI &tft,
+                          int speed,        // 0-99
+                          float pitchDeg,   // from ypr[1]*180/PI
+                          const char* modeName,
+                          uint16_t modeCol) {
+  int cx = SPD_X + SPD_W / 2;
+
+  // Clear speed area (avoid full screen clear)
+  tft.fillRect(SPD_X + 1, BODY_Y + 1, SPD_W - 2, BODY_H - 2, DB_BG);
+
+  // (Speed number drawn by gyro sprite in Main_task)
+  // Mode name below speed
+  tft.setTextColor(modeCol, DB_BG);
+  tft.drawString(modeName, cx, BODY_Y + BODY_H / 2 + 70, 4);
+
+  // Tilt indicator bar (pitch) frame
+  int tiltBarW = SPD_W - 20;
+  int tiltBarX = SPD_X + 10;
+  int tiltBarY = BODY_Y + BODY_H - 58;
+  tft.drawRoundRect(tiltBarX - 1, tiltBarY - 1, tiltBarW + 2, 12, 4, DB_BORDER);
+  
+  db_drawTiltNeedle(tft, pitchDeg);
 }
 
 // ── Draw right param panel ────────────────────────────────────
@@ -251,13 +263,14 @@ static void db_drawParams(TFT_eSPI &tft,
 // ── Draw header (mode name + clock ticks) ────────────────────
 static void db_drawHeader(TFT_eSPI &tft,
                             const char* modeName,
-                            unsigned long ms) {
+                            unsigned long ms,
+                            uint16_t modeCol) {
   // Clear header right area
   tft.fillRect(80, 1, SCR_W - 82, HDR_H - 2, DB_PANEL);
 
   // Mode name centre
   tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(DB_YELLOW, DB_PANEL);
+  tft.setTextColor(modeCol, DB_PANEL);
   tft.drawString(modeName, SCR_W / 2, HDR_H / 2, 2);
 
   // Uptime right
@@ -333,12 +346,13 @@ static bool db_update(TFT_eSPI &tft,
   static int  prevSpeedLim = -1;
   static int  prevMode     = -1;
   static unsigned long prevSec = 0;
-
-  const char* modeNames[3] = {"NORMAL", "SPORT", "ECO"};
-
+  static float prevPitch   = -999.0f;
+  
   float pitchDeg = yprRad[1] * 57.2957795f;
   float rollDeg  = yprRad[2] * 57.2957795f;
   float yawDeg   = yprRad[0] * 57.2957795f;
+
+  bool pitchChanged = (abs(pitchDeg - prevPitch) > 1.0f);
 
   // If invalidated (returned from menu), reset all prev* to force full redraw
   bool didFullRedraw = false;
@@ -360,6 +374,9 @@ static bool db_update(TFT_eSPI &tft,
   bool speedChanged = (speed != prevSpeed);
   bool timeChanged  = (sec   != prevSec);
 
+  const char* modeNames[3] = {"NORMAL", "SPORT", "ECO"};
+  uint16_t modeCols[3] = {DB_YELLOW, DB_RED, DB_GREEN};
+
   // Always update ring if speed changed (or full redraw)
   if (speedChanged || didFullRedraw) {
     db_drawRing(tft, speed, 0, 99);
@@ -368,7 +385,9 @@ static bool db_update(TFT_eSPI &tft,
 
   // Update centre panel column (clear area for sprite)
   if (speedChanged || mode != prevMode || didFullRedraw) {
-    db_drawSpeed(tft, speed, pitchDeg, modeNames[mode]);
+    db_drawSpeed(tft, speed, pitchDeg, modeNames[mode], modeCols[mode]);
+  } else if (pitchChanged) {
+    db_drawTiltNeedle(tft, pitchDeg);
   }
 
   // Update right panel only if params/mode changed
@@ -381,14 +400,18 @@ static bool db_update(TFT_eSPI &tft,
   }
 
   // Update header every second (or full redraw)
-  if (timeChanged || didFullRedraw) {
-    db_drawHeader(tft, modeNames[mode], ms);
+  if (timeChanged || mode != prevMode || didFullRedraw) {
+    db_drawHeader(tft, modeNames[mode], ms, modeCols[mode]);
     prevSec = sec;
   }
 
   // Status bar
-  if (speedChanged || timeChanged || didFullRedraw) {
+  if (speedChanged || timeChanged || pitchChanged || didFullRedraw) {
     db_drawStatusBar(tft, speed, pitchDeg, rollDeg, yawDeg);
+  }
+  
+  if (pitchChanged || didFullRedraw) {
+    prevPitch = pitchDeg;
   }
 
   return didFullRedraw;
