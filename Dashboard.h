@@ -104,14 +104,7 @@ static void db_drawChrome(TFT_eSPI &tft) {
   db_hline(tft, STB_Y - 1, 0, SCR_W);
   tft.fillRect(0, STB_Y, SCR_W, STB_H, DB_PANEL);
 
-  // ── Right panel: static labels ──
-  int px = PARAM_X + 6;
-  tft.setTextDatum(ML_DATUM);
-  tft.setTextColor(DB_GREY, DB_BG);
-
-  tft.drawString("RAMP UP",  px, BODY_Y + 14, 1);
-  tft.drawString("RAMP DWN", px, BODY_Y + 74, 1);
-  tft.drawString("SPD LIM",  px, BODY_Y + 134, 1);
+  // ── Right panel: static labels (Removed as requested) ──
 
   // ── Centre panel: static labels ──
   tft.setTextColor(DB_GREY, DB_BG);
@@ -172,7 +165,7 @@ static void db_ringMeter(TFT_eSPI &tft,
 static void db_drawTiltNeedle(TFT_eSPI &tft, float pitchDeg) {
   int tiltBarW = SPD_W - 20;
   int tiltBarX = SPD_X + 10;
-  int tiltBarY = BODY_Y + BODY_H - 58;
+  int tiltBarY = BODY_Y + BODY_H - 25;
   
   // Clear just the needle area inside the bar
   tft.fillRoundRect(tiltBarX, tiltBarY, tiltBarW, 10, 3, DB_DARKGREY);
@@ -208,7 +201,7 @@ static void db_drawSpeed(TFT_eSPI &tft,
   // Tilt indicator bar (pitch) frame
   int tiltBarW = SPD_W - 20;
   int tiltBarX = SPD_X + 10;
-  int tiltBarY = BODY_Y + BODY_H - 58;
+  int tiltBarY = BODY_Y + BODY_H - 25;
   tft.drawRoundRect(tiltBarX - 1, tiltBarY - 1, tiltBarW + 2, 12, 4, DB_BORDER);
   
   db_drawTiltNeedle(tft, pitchDeg);
@@ -218,33 +211,8 @@ static void db_drawSpeed(TFT_eSPI &tft,
 static void db_drawParams(TFT_eSPI &tft,
                            int rampUp, int rampDown, int speedLim,
                            int mode) {
-  int px = PARAM_X + 4;
-  int bx = px;
-  int bw = PARAM_W - 10;
+  // Removed parameter numbers (Ramp Up, Ramp Down, Speed Limit) as requested
 
-  // Section: RAMP UP
-  int sy = BODY_Y + 24;
-  db_gradBar(tft, bx, sy, bw, 18, rampUp, DB_GREEN);
-  tft.setTextDatum(MR_DATUM);
-  tft.setTextColor(DB_WHITE, DB_BG);
-  char tmp[8];
-  snprintf(tmp, sizeof(tmp), "%d", rampUp);
-  tft.fillRect(PARAM_X + PARAM_W - 30, sy - 2, 28, 22, DB_BG);
-  tft.drawString(tmp, PARAM_X + PARAM_W - 3, sy + 9, 2);
-
-  // Section: RAMP DOWN
-  sy = BODY_Y + 84;
-  db_gradBar(tft, bx, sy, bw, 18, rampDown, DB_ORANGE);
-  snprintf(tmp, sizeof(tmp), "%d", rampDown);
-  tft.fillRect(PARAM_X + PARAM_W - 30, sy - 2, 28, 22, DB_BG);
-  tft.drawString(tmp, PARAM_X + PARAM_W - 3, sy + 9, 2);
-
-  // Section: SPEED LIMIT
-  sy = BODY_Y + 144;
-  db_gradBar(tft, bx, sy, bw, 18, speedLim, DB_PURPLE);
-  snprintf(tmp, sizeof(tmp), "%d", speedLim);
-  tft.fillRect(PARAM_X + PARAM_W - 30, sy - 2, 28, 22, DB_BG);
-  tft.drawString(tmp, PARAM_X + PARAM_W - 3, sy + 9, 2);
 
   // Mode dots (3 circles)
   int dotY = BODY_Y + BODY_H - 28;

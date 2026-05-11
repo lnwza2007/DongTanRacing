@@ -1223,10 +1223,10 @@ void Main_task() {
   if (fullRedraw) { prevSpriteSpeed = -1; prevAngle1 = -999.0f; }  
 
   if (Speed != prevSpriteSpeed || abs(angle1 - prevAngle1) >= 1.0f) {
-    // 💡 ขยับแกนวาด Sprite ขึ้นไปสุดๆ ที่พิกัด 110 เพื่อดันตัวเลขหนีชื่อ Mode
-    tft.setPivot(375, 110);
-    // ต้องขยายกรอบลบพื้นหลังขึ้นไปจนสุด Body (BODY_Y + 1) เพื่อไม่ให้ขอบตัวอักษรเหลือคราบเวลาหมุน
-    tft.fillRect(SPD_X + 1, BODY_Y + 1, SPD_W - 2, 195, DB_BG);
+    // 💡 ขยับแกนวาด Sprite ขึ้นไปที่พิกัด 90 เพื่อดันตัวเลข 0 ขึ้นไปอีก
+    tft.setPivot(375, 90);
+    // ปรับความสูงของสี่เหลี่ยมดำที่ลบพื้นหลังให้สั้นลง (แค่ 170) จะได้ไม่ไปทับชื่อ Mode ด้านล่าง
+    tft.fillRect(SPD_X + 1, BODY_Y + 1, SPD_W - 2, 170, DB_BG);
 
     uint16_t col = speedColor(Speed, SPEED_LIM[mode]);
 
