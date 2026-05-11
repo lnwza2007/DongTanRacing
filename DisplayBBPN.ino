@@ -9,6 +9,12 @@
 #define ILI9341_WHITE 0xFFFF
 #define ILI9341_GREEN 0x07E0 // 💡 แก้ไขรหัสสีเขียว RGB565 จริง เพื่อไม่ให้ระบบวาดสีกราฟิกค้างขาว
 #define GREEN2RED  4
+
+// F1 Font sizes
+#define FONT_SMALL 1
+#define FONT_MED   2
+#define FONT_LARGE 4
+#define FONT_HUGE  7
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 // 💡 ย้ายขา INTERRUPT_PIN หนีจากขา 2 (ไปขา 13) เพื่อปลดปล่อย GPIO 2 คืนให้ไฟสีฟ้าและหน้าจอ
@@ -90,6 +96,18 @@ int func ;
 int buttonState;            // สถานะของปุ่มปัจจุบัน
 int lastButtonState = HIGH; // เก็บสถานะล่าสุดของปุ่ม
 int mode = 0;               // ตัวแปรเก็บโหมดปัจจุบัน
+
+// --- F1 Simulation Variables ---
+float simSpeed = 0;
+float simRPM = 5000;
+int simGear = 1;
+int simTyreTemp = 40;
+int simFuel = 100;
+float simGapAhead = 1.23;
+float simGapBehind = 2.34;
+unsigned long simStartTime = 0;
+
+int dashStyle = 1; // 0 = Classic, 1 = F1 (Set to 1 to show F1 by default)
 
 // Theme color getter functions
 uint16_t get_db_bg()    { return (mode == 2) ? 0x064D : 0x0841; }
@@ -215,7 +233,15 @@ void setup(void) {
   }
 
   tft.begin();
-  db_init(tft);                      // 💡 Init dark dashboard (sets rotation, fills BG, draws chrome)
+  
+  if (dashStyle == 0) {
+    db_init(tft);                      // 💡 Init dark dashboard (sets rotation, fills BG, draws chrome)
+  } else {
+    tft.setRotation(1); // Landscape
+    tft.fillScreen(BLACK);
+    simStartTime = millis();
+    drawStaticUI();
+  }
   
   // 💡 ปรับขยายขนาด Sprite และตั้งจุดหมุนกึ่งกลางจอ 4 นิ้วให้รับส่งสัมพันธ์กันเป๊ะๆ
   tft.setPivot(375, 160);            
@@ -350,7 +376,7 @@ void loop() {
                   sendCommandToSlave('S');
                   while (cancle == false)
                  {
-                    if (Rotary>22) {
+                    if (Rotary>30) {
                       Rotary = 0 ;
                       }
                     if (Rotary<-15) {
@@ -367,6 +393,9 @@ void loop() {
                 else if (Rotary >= 16 && Rotary <= 22) {
                     mode1 = 2;
                 }
+                else if (Rotary >= 25 && Rotary <= 30) {
+                    mode1 = 3;
+                }
                 else if(Rotary <= -3 && Rotary >= -8){
                     mode1 = 2 ;
                 }
@@ -377,7 +406,14 @@ void loop() {
                 Serial.println(mode1);
                      if (mode1 != previousMode1)
                      {  
-                        Set_Parameter();         
+                        if (mode1 == 3) {
+                          tft.fillScreen(BLACK);
+                          tft.setTextColor(ILI9341_WHITE, BLACK);
+                          tft.setTextDatum(MC_DATUM);
+                          tft.drawString("Menu: Dash Style", 240, 160, 4);
+                        } else {
+                          Set_Parameter();         
+                        }
                         previousMode1 = mode1;   
                      }
         //---------------***********************************-------------------------//            
@@ -810,6 +846,93 @@ void loop() {
                                     }
                                     
                                   }
+                                  if (mode1 == 3)
+                                  { 
+                                    unsigned long previousMillis = millis();  
+                                    int previousValue = -1 ;
+                                    int value_X ;
+                                    
+                                    tft.fillScreen(TFT_BLACK);
+                                    tft.setTextColor(ILI9341_WHITE, BLACK);
+                                    tft.setTextDatum(MC_DATUM);
+                                    tft.drawString("SELECT DASH STYLE", 240, 50, 4);
+                                    
+                                    // Draw static boxes
+                                    // Box 1: Classic
+                                    tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208); // Subtle grey
+                                    tft.drawString("CLASSIC", 130, 160, 2);
+                                    
+                                    // Box 2: F1 Style
+                                    tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208); // Subtle grey
+                                    tft.drawString("F1 STYLE", 350, 160, 2);
+
+                                    while (selectingMode1 == true)
+                                    {  
+                                       // Toggle between 0 and 1 using Rotary
+                                       value_X = abs(Rotary) % 2; 
+                                       
+                                        if (value_X != previousValue)
+                                          { 
+                                            if (value_X == 0) {
+                                              // Highlight Classic
+                                              tft.drawRoundRect(40, 100, 180, 120, 10, CYAN);
+                                              tft.drawRoundRect(41, 101, 178, 118, 9, CYAN); // Thicker border
+                                              
+                                              // Un-highlight F1
+                                              tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
+                                              tft.drawRoundRect(261, 101, 178, 118, 9, BLACK); // Clear thick border
+                                            } else {
+                                              // Highlight F1
+                                              tft.drawRoundRect(260, 100, 180, 120, 10, CYAN);
+                                              tft.drawRoundRect(261, 101, 178, 118, 9, CYAN); // Thicker border
+                                              
+                                              // Un-highlight Classic
+                                              tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
+                                              tft.drawRoundRect(41, 101, 178, 118, 9, BLACK); // Clear thick border
+                                            }
+                                            previousValue = value_X;  
+                                            previousMillis = millis();     
+                                          }
+                                          
+                                        PETCH = true ;
+                                        unsigned long buttonPressStart = millis() ; 
+                                        while(digitalRead(buttonPin) == 1 && PETCH == true ) {
+                                          if (millis() - buttonPressStart >= 2000) {
+                                              dashStyle = value_X;
+                                              selectingMode1 = false;
+                                              selectingMode = false;
+                                              cancle = true ;
+                                              
+                                              tft.fillScreen(BLACK);
+                                              if (dashStyle == 1) {
+                                                drawStaticUI();
+                                              } else {
+                                                db_init(tft);
+                                              }
+                                              
+                                              PETCH = false;
+                                          } else if (digitalRead(buttonPin) == 0) {
+                                              PETCH = false;
+                                              dashStyle = value_X;
+                                              selectingMode1 = false;
+                                              selectingMode = false;
+                                              
+                                              tft.fillScreen(BLACK);
+                                              if (dashStyle == 1) {
+                                                drawStaticUI();
+                                              } else {
+                                                db_init(tft);
+                                              }
+                                          }
+                                        }
+                                        
+                                        if (millis() - previousMillis > 5000) 
+                                          {
+                                              selectingMode1 = false;  
+                                              selectingMode = false;
+                                          }
+                                    }
+                                  }
                                   ////----------------------------------------------------------------------------------// 
                                 }
                                 tft.fillScreen(DB_BG);
@@ -1219,38 +1342,58 @@ void Main_task() {
   Serial.println(Speed);
 
 
-  bool fullRedraw = db_update(tft,
-            Speed,
-            RAMP_UP[mode], RAMP_DOWN[mode], SPEED_LIM[mode],
-            mode,
-            ypr);
+  if (dashStyle == 0) {
+    bool fullRedraw = db_update(tft,
+              Speed,
+              RAMP_UP[mode], RAMP_DOWN[mode], SPEED_LIM[mode],
+              mode,
+              ypr);
 
-  static int   prevSpriteSpeed = -1;
-  static float prevAngle1      = -999.0f;
-  if (fullRedraw) { prevSpriteSpeed = -1; prevAngle1 = -999.0f; }  
+    static int   prevSpriteSpeed = -1;
+    static float prevAngle1      = -999.0f;
+    if (fullRedraw) { prevSpriteSpeed = -1; prevAngle1 = -999.0f; }  
 
-  if (Speed != prevSpriteSpeed || abs(angle1 - prevAngle1) >= 1.0f) {
-    // 💡 ขยับแกนวาด Sprite ขึ้นไปที่พิกัด 90 เพื่อดันตัวเลข 0 ขึ้นไปอีก
-    tft.setPivot(375, 90);
-    // ปรับความสูงของสี่เหลี่ยมดำที่ลบพื้นหลังให้สั้นลง (แค่ 170) จะได้ไม่ไปทับชื่อ Mode ด้านล่าง
-    tft.fillRect(SPD_X + 1, BODY_Y + 1, SPD_W - 2, 170, DB_BG);
+    if (Speed != prevSpriteSpeed || abs(angle1 - prevAngle1) >= 1.0f) {
+      // 💡 ขยับแกนวาด Sprite ขึ้นไปที่พิกัด 90 เพื่อดันตัวเลข 0 ขึ้นไปอีก
+      tft.setPivot(375, 90);
+      // ปรับความสูงของสี่เหลี่ยมดำที่ลบพื้นหลังให้สั้นลง (แค่ 170) จะได้ไม่ไปทับชื่อ Mode ด้านล่าง
+      tft.fillRect(SPD_X + 1, BODY_Y + 1, SPD_W - 2, 170, DB_BG);
 
-    uint16_t col = speedColor(Speed, SPEED_LIM[mode]);
+      uint16_t col = speedColor(Speed, SPEED_LIM[mode]);
 
-    hundreds = Speed / 100;
-    tens     = (Speed / 10) % 10;
-    units    = Speed % 10;
+      hundreds = Speed / 100;
+      tens     = (Speed / 10) % 10;
+      units    = Speed % 10;
 
-    if (Speed <= 9) {
-      drawRotatedText_UNIT(String(units), 0, 0, angle1, col);
-    } else if (Speed < 20) {
-      drawRotatedText_TEN(String(hundreds), String(tens), String(units), 0, 0, angle1, col);
-    } else {
-      drawRotatedText(String(hundreds), String(tens), String(units), 0, 0, angle1, col);
+      if (Speed <= 9) {
+        drawRotatedText_UNIT(String(units), 0, 0, angle1, col);
+      } else if (Speed < 20) {
+        drawRotatedText_TEN(String(hundreds), String(tens), String(units), 0, 0, angle1, col);
+      } else {
+        drawRotatedText(String(hundreds), String(tens), String(units), 0, 0, angle1, col);
+      }
+
+      prevSpriteSpeed = Speed;
+      prevAngle1      = angle1;
     }
-
-    prevSpriteSpeed = Speed;
-    prevAngle1      = angle1;
+  } else {
+    // --- F1 Dashboard Update ---
+    simSpeed = Speed; // Use real speed
+    // Simulate RPM based on speed
+    simRPM = map(Speed, 0, 99, 5000, 12000);
+    simGear = (Speed / 15) + 1;
+    if (simGear > 7) simGear = 7;
+    
+    // Simulate other fields
+    simGapAhead -= 0.001; if (simGapAhead < 0.1) simGapAhead = 2.5;
+    simGapBehind += 0.002; if (simGapBehind > 5.0) simGapBehind = 1.0;
+    
+    if (millis() % 5000 < 50) {
+      simFuel--;
+      if (simFuel < 0) simFuel = 100;
+    }
+    
+    updateDynamicData();
   }
 
   Pre_Speed = Speed;
@@ -1316,23 +1459,79 @@ void handleRotaryBelowThreshold() {
 
 // Handles when Rotary > 1
 void handleRotaryAboveThreshold() {
-    db_drawChrome(tft);  
+    bool Enter = true;
     unsigned long Time = millis();
-    bool Enter = true, Show = true;
+    int previousDashStyle = -1;
+    Rotary = 0;
+    
+    // Draw initial selection screen
+    tft.fillScreen(0x0000); // Pure black
+    tft.setTextColor(0xFFFF, 0x0000); // White on Black
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("SELECT DASH STYLE", 240, 50, 4);
+    
+    // Draw boxes
+    tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
+    tft.drawString("CLASSIC", 130, 160, 2);
+    
+    tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
+    tft.drawString("F1 STYLE", 350, 160, 2);
 
     while (Enter) {
-        if (Show) {
-            updateDisplay(func);
-            Show = false;
+        if (Rotary > 20) {
+            Rotary = 0;
         }
 
-        if (millis() - Time > 2000) {
-            Enter = false;
-             Pre_Speed = -1 ;
-            db_drawChrome(tft);
-            db_invalidate();  
+        if (Rotary >= 2 && Rotary <= 10) {
+            dashStyle = 0; // Classic
+        } else if (Rotary >= 11 && Rotary <= 20) {
+            dashStyle = 1; // F1
         }
+
+        if (dashStyle != previousDashStyle) {
+            if (dashStyle == 0) {
+                // Highlight Classic
+                tft.drawRoundRect(40, 100, 180, 120, 10, 0x07FF); // Cyan
+                tft.drawRoundRect(41, 101, 178, 118, 9, 0x07FF);
+                
+                tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
+                tft.drawRoundRect(261, 101, 178, 118, 9, 0x0000);
+            } else {
+                // Highlight F1
+                tft.drawRoundRect(260, 100, 180, 120, 10, 0x07FF); // Cyan
+                tft.drawRoundRect(261, 101, 178, 118, 9, 0x07FF);
+                
+                tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
+                tft.drawRoundRect(41, 101, 178, 118, 9, 0x0000);
+            }
+            previousDashStyle = dashStyle;
+            Time = millis();
+        }
+
+        // Confirm with button press
+        if (digitalRead(buttonPin) == HIGH) {
+            Enter = false;
+            tft.fillScreen(0x0000);
+            if (dashStyle == 1) {
+                drawStaticUI();
+            } else {
+                db_init(tft);
+            }
+            while(digitalRead(buttonPin) == HIGH); // Wait for release
+        }
+
+        if (millis() - Time > 3000) { // 3 seconds timeout
+            Enter = false;
+            tft.fillScreen(0x0000);
+            if (dashStyle == 1) {
+                drawStaticUI();
+            } else {
+                db_init(tft);
+            }
+        }
+        delay(10);
     }
+    Rotary = 0;
 }
 
 void updateDisplay(int func) {
@@ -1410,6 +1609,269 @@ void get_speed (){
   if (Wire.available()) { 
     Speed = Wire.read() ;
   }
+}
+
+void drawBox(int x, int y, int w, int h) {
+  tft.drawRect(x, y, w, h, ILI9341_WHITE);
+}
+
+void drawStaticUI() {
+  tft.fillScreen(0x0000); // Explicit black
+  
+  // Top Header / Rev Bar
+  tft.fillRect(0, 0, 480, 25, 0x2104); // Dark grey header
+  
+  // Draw Rev Bar Background Segments
+  int revX = 100;
+  int revY = 5;
+  int revW = 15;
+  int revH = 15;
+  int revGap = 4;
+  for (int i = 0; i < 15; i++) {
+    tft.drawRoundRect(revX + (i * (revW + revGap)), revY, revW, revH, 2, 0x4208);
+  }
+
+  // --- Top Left: Speed & RPM ---
+  // Speed Box
+  tft.fillRoundRect(20, 35, 110, 60, 5, 0x1082);
+  tft.drawRoundRect(20, 35, 110, 60, 5, 0x4208);
+  tft.setTextColor(0xFFFF, 0x1082);
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString("SPD", 75, 90, 1);
+
+  // RPM Box
+  tft.fillRoundRect(135, 35, 140, 60, 5, 0x1082);
+  tft.drawRoundRect(135, 35, 140, 60, 5, 0x4208);
+  tft.drawString("RPM", 205, 90, 1);
+
+  // --- Middle Left: Tyres ---
+  // FL
+  tft.drawString("FLTyre", 40, 105, 1);
+  tft.fillRoundRect(20, 115, 35, 45, 5, 0x07E0); // Explicit Green
+  tft.setTextColor(0x0000, 0x07E0); // Black on Green
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("40", 37, 137, 2);
+  
+  tft.drawRoundRect(60, 115, 35, 45, 5, 0xFFFF);
+  tft.setTextColor(0xFFFF, 0x0000);
+  tft.drawString("10", 77, 137, 2);
+
+  // FR
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString("FRTyre", 130, 105, 1);
+  tft.drawRoundRect(110, 115, 35, 45, 5, 0xFFFF);
+  tft.setTextColor(0xFFFF, 0x0000);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("10", 127, 137, 2);
+  
+  tft.fillRoundRect(150, 115, 35, 45, 5, 0x07E0);
+  tft.setTextColor(0x0000, 0x07E0);
+  tft.drawString("40", 167, 137, 2);
+
+  // RL
+  tft.setTextColor(0xFFFF, 0x0000);
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString("RLTyre", 40, 175, 1);
+  tft.fillRoundRect(20, 185, 35, 45, 5, 0x07E0);
+  tft.setTextColor(0x0000, 0x07E0);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("40", 37, 207, 2);
+  
+  tft.drawRoundRect(60, 185, 35, 45, 5, 0xFFFF);
+  tft.setTextColor(0xFFFF, 0x0000);
+  tft.drawString("10", 77, 207, 2);
+
+  // RR
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString("RRTyre", 130, 175, 1);
+  tft.drawRoundRect(110, 185, 35, 45, 5, 0xFFFF);
+  tft.setTextColor(0xFFFF, 0x0000);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("10", 127, 207, 2);
+  
+  tft.fillRoundRect(150, 185, 35, 45, 5, 0x07E0);
+  tft.setTextColor(0x0000, 0x07E0);
+  tft.drawString("40", 167, 207, 2);
+
+  // --- Bottom Left: Small Boxes ---
+  // Time
+  tft.fillRoundRect(20, 240, 100, 35, 3, 0x1082);
+  tft.drawRoundRect(20, 240, 100, 35, 3, 0x4208);
+  tft.setTextColor(0xFFFF, 0x1082);
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString("Time", 70, 242, 1);
+
+  // Pos
+  tft.fillRoundRect(125, 240, 40, 35, 3, 0x1082);
+  tft.drawRoundRect(125, 240, 40, 35, 3, 0x4208);
+  tft.drawString("Pos", 145, 242, 1);
+
+  // SC
+  tft.fillRoundRect(170, 240, 80, 35, 3, 0x1082);
+  tft.drawRoundRect(170, 240, 80, 35, 3, 0x4208);
+  tft.drawString("SC Panel", 210, 242, 1);
+
+  // Lap
+  tft.fillRoundRect(20, 280, 50, 35, 3, 0x1082);
+  tft.drawRoundRect(20, 280, 50, 35, 3, 0x4208);
+  tft.drawString("Lap", 45, 282, 1);
+
+  // Total Laps
+  tft.fillRoundRect(75, 280, 70, 35, 3, 0x1082);
+  tft.drawRoundRect(75, 280, 70, 35, 3, 0x4208);
+  tft.drawString("Total Laps", 110, 282, 1);
+
+  // SC Delta
+  tft.fillRoundRect(150, 280, 100, 35, 3, 0x1082);
+  tft.drawRoundRect(150, 280, 100, 35, 3, 0x4208);
+  tft.drawString("SC Delta", 200, 282, 1);
+
+  // --- Far Right: Vertical Stack ---
+  int rx = 340;
+  int rw = 120;
+  
+  // Fuel
+  tft.fillRoundRect(rx, 35, rw, 40, 5, 0x1082);
+  tft.drawRoundRect(rx, 35, rw, 40, 5, 0x4208);
+  tft.setTextColor(0xFFFF, 0x1082);
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString("Fuel", rx + rw/2, 37, 1);
+
+  // Fuel Est
+  tft.fillRoundRect(rx, 80, rw, 40, 5, 0x1082);
+  tft.drawRoundRect(rx, 80, rw, 40, 5, 0x4208);
+  tft.drawString("Fuel Est Laps", rx + rw/2, 82, 1);
+
+  // Gap Ahead
+  tft.fillRoundRect(rx, 125, rw, 40, 5, 0x1082);
+  tft.drawRoundRect(rx, 125, rw, 40, 5, 0x4208);
+  tft.drawString("Gap Ahead", rx + rw/2, 127, 1);
+
+  // Gap Behind
+  tft.fillRoundRect(rx, 170, rw, 40, 5, 0x1082);
+  tft.drawRoundRect(rx, 170, rw, 40, 5, 0x4208);
+  tft.drawString("Gap Behind", rx + rw/2, 172, 1);
+
+  // Laps (Current, Best, Last)
+  tft.setTextColor(0xFFFF, 0x0000);
+  tft.setTextDatum(ML_DATUM);
+  tft.drawString("Current Lap:", rx, 220, 1);
+  tft.drawString("Best:", rx, 250, 1);
+  tft.drawString("Last:", rx, 280, 1);
+}
+
+void updateDynamicData() {
+  tft.setTextDatum(MC_DATUM);
+
+  // --- 1. Rev Bar (Shift Lights) ---
+  int revX = 100;
+  int revY = 5;
+  int revW = 15;
+  int revH = 15;
+  int revGap = 4;
+  
+  int activeSegments = map(simRPM, 5000, 12000, 0, 15);
+  activeSegments = constrain(activeSegments, 0, 15);
+  
+  for (int i = 0; i < 15; i++) {
+    uint16_t color = 0x4208; // Off color
+    if (i < activeSegments) {
+      if (i < 5) color = 0x07E0; // Green
+      else if (i < 10) color = 0xF800; // Red
+      else color = 0x07FF; // Cyan
+    }
+    tft.fillRoundRect(revX + (i * (revW + revGap)), revY, revW, revH, 2, color);
+  }
+
+  // --- 2. Speed & RPM ---
+  tft.setTextColor(0x07FF, 0x1082); // Cyan on Dark Grey
+  tft.setTextPadding(80);
+  tft.drawString(String((int)simSpeed), 75, 60, 4);
+
+  tft.setTextColor(0xFFFF, 0x1082); // White on Dark Grey
+  tft.setTextPadding(100);
+  tft.drawString(String((int)simRPM), 205, 60, 4);
+
+  // --- 3. Gear ---
+  static int previousSimGear = -1;
+  if (simGear != previousSimGear) {
+    tft.setFreeFont(&FreeMono18pt7b);
+    tft.setTextSize(4); // Huge!
+    
+    // Clear the old gear area (Gear is at 280, 140 center datum)
+    tft.fillRect(250, 100, 60, 80, 0x0000); // Black box
+    
+    tft.setTextColor(0x07FF); // Cyan
+    tft.drawString(String(simGear), 280, 140);
+    
+    previousSimGear = simGear;
+    
+    // Reset font
+    tft.setFreeFont(NULL);
+    tft.setTextSize(1);
+  }
+
+  // --- 4. Far Right Stack Data ---
+  int rx = 340;
+  int rw = 120;
+  tft.setTextPadding(100);
+
+  // Fuel
+  tft.setTextColor(0x07E0, 0x1082); // Green on Dark Grey
+  tft.drawString(String(simFuel), rx + rw/2, 55, 2);
+
+  // Fuel Est
+  tft.drawString("12.1", rx + rw/2, 100, 2);
+
+  // Gaps
+  tft.setTextColor(0xFFFF, 0x1082); // White on Dark Grey
+  tft.drawString("+" + String(simGapAhead, 2), rx + rw/2, 145, 2);
+  tft.drawString("-" + String(simGapBehind, 2), rx + rw/2, 190, 2);
+
+  // Lap Times
+  tft.setTextPadding(0);
+  tft.setTextDatum(MR_DATUM);
+  
+  tft.setTextColor(0xF800, 0x0000); // Red on Black
+  tft.drawString("01:12:378", 460, 220, 2);
+  
+  tft.setTextColor(0x07E0, 0x0000); // Green on Black
+  tft.drawString("01:30:378", 460, 250, 2);
+  
+  tft.setTextColor(0xFFFF, 0x0000); // White on Black
+  tft.drawString("01:12:378", 460, 280, 2);
+
+  // --- 5. Bottom Left Data ---
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextPadding(80);
+  
+  // Time
+  tft.setTextColor(0x07FF, 0x1082); // Cyan
+  tft.drawString("01:04:32", 70, 260, 2);
+
+  // Pos
+  tft.setTextColor(0x03DF, 0x1082); // Blue
+  tft.drawString("12", 145, 260, 2);
+
+  // SC
+  tft.setTextColor(0xFFE0, 0x1082); // Yellow
+  tft.drawString("VSC", 210, 260, 2);
+
+  // Lap
+  tft.setTextPadding(40);
+  tft.setTextColor(0xF800, 0x1082); // Red
+  tft.drawString("14", 45, 300, 2);
+
+  // Total
+  tft.setTextPadding(60);
+  tft.drawString("14", 110, 300, 2);
+
+  // Delta
+  tft.setTextPadding(80);
+  tft.setTextColor(0xFFE0, 0x1082); // Yellow
+  tft.drawString("+1.045", 200, 300, 2);
+
+  tft.setTextPadding(0);
 }
 
 
