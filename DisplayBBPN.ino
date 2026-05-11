@@ -90,6 +90,13 @@ int func ;
 int buttonState;            // สถานะของปุ่มปัจจุบัน
 int lastButtonState = HIGH; // เก็บสถานะล่าสุดของปุ่ม
 int mode = 0;               // ตัวแปรเก็บโหมดปัจจุบัน
+
+// Theme color getter functions
+uint16_t get_db_bg()    { return (mode == 2) ? 0x064D : 0x0841; }
+uint16_t get_db_panel() { return (mode == 2) ? 0x054A : 0x1082; }
+uint16_t get_db_white() { return (mode == 2) ? 0x0000 : 0xFFFF; }
+uint16_t get_db_grey()  { return (mode == 2) ? 0x2104 : 0x528A; }
+
 int mode1 = 0;
 int reading ;
 int read1 ;

@@ -1,263 +1,148 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BBPN EV Controller Dashboard</title>
-  <meta name="description" content="Real-time dashboard for BBPN Electric Vehicle Controller — Speed, Ramp, Tilt, and Mode monitoring." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Racing Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Animated background particles -->
-  <div class="bg-particles" id="bgParticles"></div>
+  <!-- Left Side Flag Indicator -->
+  <div class="side-flag flag-blue"></div>
 
-  <!-- Top Header -->
-  <header class="header">
-    <div class="header-left">
-      <div class="logo-ring">
-        <svg viewBox="0 0 40 40" width="40" height="40">
-          <circle cx="20" cy="20" r="18" fill="none" stroke="url(#logoGrad)" stroke-width="2.5"/>
-          <path d="M10 20 L18 12 L26 20 L18 28 Z" fill="url(#logoGrad)"/>
-          <defs>
-            <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#00f5ff"/>
-              <stop offset="100%" stop-color="#7c3aed"/>
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-      <div>
-        <h1 class="brand">BBPN Controller</h1>
-        <span class="brand-sub">EV Drive System Monitor</span>
+  <main class="dashboard">
+    <!-- TOP ROW (Span across middle) -->
+    <div class="top-row">
+      <div class="speed-rpm-container">
+        <div class="top-box">
+          <div class="value cyan spd-val" id="speed">230</div>
+        </div>
+        <div class="top-box">
+          <div class="value white rpm-val" id="rpm">11500</div>
+        </div>
+        <div class="top-labels">
+          <span class="line-label">SPD</span>
+          <span class="line-label">RPM</span>
+        </div>
       </div>
     </div>
-    <div class="header-center">
-      <div class="status-pill" id="connectionStatus">
-        <span class="status-dot pulse"></span>
-        <span>LIVE SIMULATION</span>
+
+    <!-- MAIN GRID -->
+    <div class="grid">
+      <!-- LEFT COLUMN: Tyres & Bottom Left Info -->
+      <div class="col-left">
+        <!-- Tyres -->
+        <div class="tyres-grid">
+          <!-- FL -->
+          <div class="tyre-box">
+            <div class="tyre-header">FLTyre</div>
+            <div class="tyre-data">
+              <div class="t-box bg-green t-black">40</div>
+              <div class="t-box bg-black t-green">10</div>
+            </div>
+          </div>
+          <!-- FR -->
+          <div class="tyre-box">
+            <div class="tyre-header">FRTyre</div>
+            <div class="tyre-data">
+              <div class="t-box bg-black t-green">10</div>
+              <div class="t-box bg-green t-black">40</div>
+            </div>
+          </div>
+          <!-- RL -->
+          <div class="tyre-box">
+            <div class="tyre-header">RLTyre</div>
+            <div class="tyre-data">
+              <div class="t-box bg-green t-black">40</div>
+              <div class="t-box bg-black t-green">10</div>
+            </div>
+          </div>
+          <!-- RR -->
+          <div class="tyre-box">
+            <div class="tyre-header">RRTyre</div>
+            <div class="tyre-data">
+              <div class="t-box bg-black t-green">10</div>
+              <div class="t-box bg-green t-black">40</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Left -->
+        <div class="info-row">
+          <div class="info-box">
+            <div class="info-label">Time</div>
+            <div class="info-val cyan" id="time">01:04:32</div>
+          </div>
+          <div class="info-box">
+            <div class="info-label">Pos</div>
+            <div class="info-val blue" id="pos">12</div>
+          </div>
+          <div class="info-box">
+            <div class="info-label">SC Panel</div>
+            <div class="info-val yellow" id="sc-panel">VSC</div>
+          </div>
+        </div>
+
+        <div class="info-row">
+          <div class="info-box">
+            <div class="info-label"><span class="red-dot"></span>Lap</div>
+            <div class="info-val red" id="lap">14</div>
+          </div>
+          <div class="info-box">
+            <div class="info-label">Total Laps</div>
+            <div class="info-val red" id="total-laps">14</div>
+          </div>
+          <div class="info-box">
+            <div class="info-label">SC Delta</div>
+            <div class="info-val yellow" id="sc-delta">+1.045</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER COLUMN: Gear -->
+      <div class="col-center">
+        <div class="gear" id="gear">5</div>
+      </div>
+
+      <!-- RIGHT COLUMN: Fuel, Gaps, Lap Times -->
+      <div class="col-right">
+        <div class="fuel-box">
+          <div class="f-label">Fuel</div>
+          <div class="f-val green" id="fuel">26</div>
+        </div>
+        <div class="fuel-box">
+          <div class="f-label">Fuel Estimated Laps</div>
+          <div class="f-val green" id="fuel-laps">12.1</div>
+        </div>
+
+        <div class="gap-box">
+          <div class="g-label">Gap Ahead</div>
+          <div class="g-val white" id="gap-ahead">+1.23</div>
+        </div>
+        <div class="gap-box">
+          <div class="g-label">Gap Behind</div>
+          <div class="g-val white" id="gap-behind">-2.34</div>
+        </div>
+
+        <div class="lap-times">
+          <div class="l-label">Current Lap</div>
+          <div class="l-val red" id="current-lap">01:12:378</div>
+          
+          <div class="l-row">
+            <span class="l-sub">Best</span>
+            <span class="l-val green" id="best-lap">01:30:378</span>
+          </div>
+          <div class="l-row">
+            <span class="l-sub">Last</span>
+            <span class="l-val white" id="last-lap">01:12:378</span>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="header-right">
-      <div class="time-display" id="timeDisplay">--:--:--</div>
-      <button class="btn-reset" id="resetBtn" title="Reset All">↺ Reset</button>
-    </div>
-  </header>
-
-  <!-- Main Grid -->
-  <main class="dashboard-grid">
-
-    <!-- === SPEEDOMETER === -->
-    <section class="card card-speed" id="speedCard">
-      <div class="card-label">SPEED</div>
-      <div class="speedo-wrap">
-        <canvas id="speedoCanvas" width="280" height="280"></canvas>
-        <div class="speedo-center">
-          <div class="speed-value" id="speedValue">0</div>
-          <div class="speed-unit">km/h</div>
-        </div>
-      </div>
-      <div class="speed-bar-wrap">
-        <div class="speed-bar-track">
-          <div class="speed-bar-fill" id="speedBarFill"></div>
-        </div>
-        <div class="speed-limits">
-          <span>0</span><span id="speedLimLabel">-- km/h</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- === MODE SELECTOR === -->
-    <section class="card card-mode">
-      <div class="card-label">DRIVE MODE</div>
-      <div class="mode-buttons">
-        <button class="mode-btn active" id="modeBtn0" data-mode="0">
-          <span class="mode-icon">🐢</span>
-          <span class="mode-name">ECO</span>
-          <span class="mode-desc">Mode 1</span>
-        </button>
-        <button class="mode-btn" id="modeBtn1" data-mode="1">
-          <span class="mode-icon">⚡</span>
-          <span class="mode-name">SPORT</span>
-          <span class="mode-desc">Mode 2</span>
-        </button>
-        <button class="mode-btn" id="modeBtn2" data-mode="2">
-          <span class="mode-icon">🔥</span>
-          <span class="mode-name">TURBO</span>
-          <span class="mode-desc">Mode 3</span>
-        </button>
-      </div>
-
-      <!-- EEPROM Parameters per mode -->
-      <div class="mode-params" id="modeParams">
-        <div class="param-row">
-          <span class="param-label">Ramp Up</span>
-          <div class="param-bar-wrap">
-            <div class="param-bar"><div class="param-fill ramp-up-fill" id="rampUpFill"></div></div>
-            <span class="param-val" id="rampUpVal">--</span>
-          </div>
-        </div>
-        <div class="param-row">
-          <span class="param-label">Ramp Down</span>
-          <div class="param-bar-wrap">
-            <div class="param-bar"><div class="param-fill ramp-down-fill" id="rampDownFill"></div></div>
-            <span class="param-val" id="rampDownVal">--</span>
-          </div>
-        </div>
-        <div class="param-row">
-          <span class="param-label">Speed Limit</span>
-          <div class="param-bar-wrap">
-            <div class="param-bar"><div class="param-fill speed-lim-fill" id="speedLimFill"></div></div>
-            <span class="param-val" id="speedLimVal">--</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- === IMU / TILT === -->
-    <section class="card card-imu">
-      <div class="card-label">IMU · MPU6050</div>
-      <div class="imu-grid">
-        <div class="imu-gauge-wrap">
-          <div class="imu-label">PITCH</div>
-          <canvas id="pitchCanvas" width="120" height="120"></canvas>
-          <div class="imu-val" id="pitchVal">0.0°</div>
-        </div>
-        <div class="imu-center-ball">
-          <canvas id="ballCanvas" width="130" height="130"></canvas>
-          <div class="imu-ball-label">TILT</div>
-        </div>
-        <div class="imu-gauge-wrap">
-          <div class="imu-label">ROLL</div>
-          <canvas id="rollCanvas" width="120" height="120"></canvas>
-          <div class="imu-val" id="rollVal">0.0°</div>
-        </div>
-      </div>
-      <div class="yaw-section">
-        <div class="yaw-label">YAW</div>
-        <div class="yaw-bar-track">
-          <div class="yaw-needle" id="yawNeedle"></div>
-        </div>
-        <div class="yaw-val" id="yawVal">0.0°</div>
-      </div>
-    </section>
-
-    <!-- === POWER FLOW === -->
-    <section class="card card-power">
-      <div class="card-label">POWER FLOW</div>
-      <div class="power-diagram">
-        <div class="power-node battery">
-          <div class="node-icon">🔋</div>
-          <div class="node-label">Battery</div>
-          <div class="node-val" id="battVal">72V</div>
-        </div>
-        <div class="power-arrow" id="powerArrow">
-          <div class="arrow-flow">
-            <div class="flow-dot d1"></div>
-            <div class="flow-dot d2"></div>
-            <div class="flow-dot d3"></div>
-          </div>
-          <div class="arrow-watt" id="arrowWatt">-- W</div>
-        </div>
-        <div class="power-node motor">
-          <div class="node-icon">⚙️</div>
-          <div class="node-label">Motor</div>
-          <div class="node-val" id="motorRPM">-- RPM</div>
-        </div>
-      </div>
-      <div class="power-stats">
-        <div class="pstat">
-          <div class="pstat-label">Current</div>
-          <div class="pstat-val" id="currentVal">0 A</div>
-        </div>
-        <div class="pstat">
-          <div class="pstat-label">Voltage</div>
-          <div class="pstat-val" id="voltageVal">72.0 V</div>
-        </div>
-        <div class="pstat">
-          <div class="pstat-label">Power</div>
-          <div class="pstat-val" id="powerVal">0 W</div>
-        </div>
-        <div class="pstat">
-          <div class="pstat-label">Efficiency</div>
-          <div class="pstat-val" id="effVal">-- %</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- === SPEED HISTORY CHART === -->
-    <section class="card card-chart">
-      <div class="card-label">SPEED HISTORY <span class="chart-badge">LIVE</span></div>
-      <canvas id="chartCanvas" width="600" height="150"></canvas>
-    </section>
-
-    <!-- === ROTARY / DAC === -->
-    <section class="card card-rotary">
-      <div class="card-label">ROTARY ENCODER & DAC</div>
-      <div class="rotary-display">
-        <div class="rotary-knob-wrap">
-          <canvas id="knobCanvas" width="130" height="130"></canvas>
-          <div class="knob-val" id="knobVal">0</div>
-        </div>
-        <div class="rotary-stats">
-          <div class="rstat">
-            <span class="rstat-label">Encoder</span>
-            <span class="rstat-val" id="encoderVal">0</span>
-          </div>
-          <div class="rstat">
-            <span class="rstat-label">DAC Out</span>
-            <span class="rstat-val" id="dacVal">0 V</span>
-          </div>
-          <div class="rstat">
-            <span class="rstat-label">Throttle</span>
-            <div class="throttle-bar"><div class="throttle-fill" id="throttleFill"></div></div>
-          </div>
-          <div class="rstat">
-            <span class="rstat-label">Direction</span>
-            <span class="rstat-val" id="dirVal">NEUTRAL</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- === ALERTS === -->
-    <section class="card card-alerts">
-      <div class="card-label">SYSTEM ALERTS</div>
-      <div class="alerts-list" id="alertsList">
-        <div class="alert-item alert-ok">
-          <span class="alert-icon">✅</span>
-          <span class="alert-text">DMP Initialized OK</span>
-          <span class="alert-time">00:00</span>
-        </div>
-        <div class="alert-item alert-ok">
-          <span class="alert-icon">✅</span>
-          <span class="alert-text">MPU6050 Connected</span>
-          <span class="alert-time">00:00</span>
-        </div>
-        <div class="alert-item alert-info">
-          <span class="alert-icon">ℹ️</span>
-          <span class="alert-text">EEPROM Loaded</span>
-          <span class="alert-time">00:01</span>
-        </div>
-      </div>
-      <div class="range-error-banner" id="rangeBanner" style="display:none">
-        ⚠️ OUT OF RANGE DETECTED
-      </div>
-    </section>
-
   </main>
 
-  <!-- Bottom status bar -->
-  <footer class="footer">
-    <div class="footer-item">I²C Slave: <strong>0x08</strong></div>
-    <div class="footer-item">INT Pin: <strong>GPIO 13</strong></div>
-    <div class="footer-item">DAC Pin: <strong>GPIO 25</strong></div>
-    <div class="footer-item">MCU: <strong>ESP32</strong></div>
-    <div class="footer-item">Display: <strong>TFT ILI9341 320×240</strong></div>
-    <div class="footer-item">Baud: <strong>115200</strong></div>
-  </footer>
+  <!-- Right Side Flag Indicator -->
+  <div class="side-flag flag-red"></div>
 
   <script src="app.js"></script>
 </body>

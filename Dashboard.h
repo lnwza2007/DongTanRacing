@@ -18,8 +18,13 @@
 #include <TFT_eSPI.h>
 
 // ── Color Palette (RGB565) ──────────────────────────────────
-#define DB_BG        0x0841   // Very dark navy background
-#define DB_PANEL     0x1082   // Slightly lighter panel bg
+extern uint16_t get_db_bg();
+extern uint16_t get_db_panel();
+extern uint16_t get_db_white();
+extern uint16_t get_db_grey();
+
+#define DB_BG        get_db_bg()
+#define DB_PANEL     get_db_panel()
 #define DB_BORDER    0x2965   // Subtle border
 #define DB_CYAN      0x07FF   // Accent cyan
 #define DB_PURPLE    0x701F   // Accent purple
@@ -27,8 +32,8 @@
 #define DB_ORANGE    0xFD20   // Accent orange (warn)
 #define DB_RED       0xF800   // Accent red (danger)
 #define DB_YELLOW    0xFFE0   // Accent yellow
-#define DB_WHITE     0xFFFF   // Text bright
-#define DB_GREY      0x528A   // Text dimmed
+#define DB_WHITE     get_db_white()
+#define DB_GREY      get_db_grey()
 #define DB_DARKGREY  0x2945   // Dimmer bg tint
 
 // ── Layout Constants ─────────────────────────────────────────
@@ -321,6 +326,11 @@ static bool db_update(TFT_eSPI &tft,
   float yawDeg   = yprRad[0] * 57.2957795f;
 
   bool pitchChanged = (abs(pitchDeg - prevPitch) > 1.0f);
+
+  // Force full redraw if mode changes (for ECO background)
+  if (prevMode != -1 && mode != prevMode) {
+    _db_dirty = true;
+  }
 
   // If invalidated (returned from menu), reset all prev* to force full redraw
   bool didFullRedraw = false;
