@@ -1,4 +1,29 @@
 #include "esp_task_wdt.h" // ── Disable watchdog during DMP calibration
+#include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h> // 👈 สำหรับล็อกช่องสัญญาณ
+
+typedef struct struct_message {
+  int id;
+  float temp_FR;
+} struct_message;
+
+struct_message incomingData;
+float display_temp_FR = 0.0;
+
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingDataPtr, int len) {
+  memcpy(&incomingData, incomingDataPtr, sizeof(incomingData));
+  if (incomingData.id == 2) { // 👈 เช็กค่า ID ให้ตรงกับตัวส่ง (2 = ล้อ FL)
+    display_temp_FR = incomingData.temp_FR;
+
+    Serial.print("✅ Received FL Avg Temp: ");
+    Serial.print(display_temp_FR);
+    Serial.println(" C");
+  } else {
+    Serial.print("Received unknown ID: ");
+    Serial.println(incomingData.id);
+  }
+}
 #define WHITE_GREY 0xFFFE
 #define BLACK 0x0000
 #define RED 0xF800
@@ -217,6 +242,17 @@ void IRAM_ATTR readEncoder() {
   lastState = currentState;
 }
 
+int32_t getWiFiChannel(const char *ssid) {
+  if (int32_t n = WiFi.scanNetworks()) {
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i) == ssid) {
+        return WiFi.channel(i); // เจอแล้วคืนค่า Channel จริงกลับไป
+      }
+    }
+  }
+  return 1; // ถ้าหาไม่เจอจริงๆ ให้ใช้ช่อง 1 เป็นค่าเริ่มต้น
+}
+
 //****************************************************************************************************//
 
 void setup(void) {
@@ -226,6 +262,23 @@ void setup(void) {
   delay(500); // รอให้ท่อรับส่งข้อมูล Serial บูตตัวเองสำเร็จ
   yield();    // สลัดภาระงาน RTOS อื่น ๆ ออกไป
   Serial.println("\n=== BBPN EV CONTROLLER BOOT ===");
+
+  // --- ESP-NOW Init ---
+  WiFi.mode(WIFI_STA);
+
+  // 1. สแกนหาช่องสัญญาณของ Hotspot "Frankza"
+  int32_t channel = getWiFiChannel("Frankza");
+
+  // 2. สั่งให้ชิปวิทยุ ESP32 ล็อกความถี่ไปที่ Channel นั้น
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_promiscuous(false);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+  } else {
+    esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+  }
 
   // ── 💡 แก้ไข API Watchdog (ESP-IDF v5) ไม่ให้ตัวตรวจจับคิดว่าบอร์ดเอ๋อระหว่างรอ DMP
   // คาลิเบรต
@@ -1366,10 +1419,14 @@ void Main_task() {
       prevAngle1 = angle1;
     }
   } else {
-    // --- F1 Dashboard Update ---
-    simSpeed = Speed; // Use real speed
+    // Simulate speed data!
+    static float simSpeedValue = 0;
+    simSpeedValue += 0.5;
+    if (simSpeedValue > 99) simSpeedValue = 0;
+    
+    simSpeed = simSpeedValue; // Use simulated speed
     // Simulate RPM based on speed
-    simRPM = map(Speed, 0, 99, 5000, 12000);
+    simRPM = map(simSpeed, 0, 99, 5000, 12000);
     simGear = (Speed / 15) + 1;
     if (simGear > 7)
       simGear = 7;
@@ -1493,6 +1550,7 @@ void handleRotaryAboveThreshold() {
     }
 
     if (dashStyle != previousDashStyle) {
+      tft.setTextDatum(MC_DATUM); // Ensure centered text
       if (dashStyle == 0) {
         // Highlight Classic
         tft.drawRoundRect(40, 100, 180, 120, 10, 0x07FF); // Cyan
@@ -1500,6 +1558,12 @@ void handleRotaryAboveThreshold() {
 
         tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
         tft.drawRoundRect(261, 101, 178, 118, 9, 0x0000);
+        
+        tft.setTextColor(0x07FF, 0x0000); // Cyan for selected
+        tft.drawString("CLASSIC", 130, 160, 2);
+        
+        tft.setTextColor(0x4208, 0x0000); // Gray for unselected
+        tft.drawString("F1 STYLE", 350, 160, 2);
       } else {
         // Highlight F1
         tft.drawRoundRect(260, 100, 180, 120, 10, 0x07FF); // Cyan
@@ -1507,6 +1571,12 @@ void handleRotaryAboveThreshold() {
 
         tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
         tft.drawRoundRect(41, 101, 178, 118, 9, 0x0000);
+        
+        tft.setTextColor(0x4208, 0x0000); // Gray for unselected
+        tft.drawString("CLASSIC", 130, 160, 2);
+        
+        tft.setTextColor(0x07FF, 0x0000); // Cyan for selected
+        tft.drawString("F1 STYLE", 350, 160, 2);
       }
       previousDashStyle = dashStyle;
       Time = millis();
@@ -1675,54 +1745,41 @@ void drawStaticUI() {
   tft.drawString("RPM", 205, 90, 1);
 
   // --- Middle Left: Tyres ---
+  tft.fillRect(10, 100, 180, 130, bgColor); // Clear previous tyre boxes
+  
+  tft.setTextDatum(TC_DATUM);
+  
   // FL
+  tft.drawRoundRect(15, 110, 75, 55, 3, textColor);
   tft.setTextColor(textColor, bgColor);
-  tft.drawString("FLTyre", 40, 105, 1);
-  tft.fillRoundRect(20, 115, 35, 45, 5, 0x07E0); // Keep green for good tyres
-  tft.setTextColor(0x0000, 0x07E0);              // Black on Green
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("40", 37, 137, 2);
-
-  tft.drawRoundRect(60, 115, 35, 45, 5, textColor);
-  tft.setTextColor(textColor, bgColor);
-  tft.drawString("10", 77, 137, 2);
+  tft.drawString("FLTyre", 52, 107, 1);
+  tft.drawRoundRect(22, 120, 28, 38, 3, textColor); // Left box
+  tft.drawRoundRect(55, 120, 28, 38, 3, textColor); // Right box
 
   // FR
-  tft.setTextDatum(BC_DATUM);
-  tft.drawString("FRTyre", 130, 105, 1);
-  tft.drawRoundRect(110, 115, 35, 45, 5, textColor);
+  tft.drawRoundRect(105, 110, 75, 55, 3, textColor);
   tft.setTextColor(textColor, bgColor);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("10", 127, 137, 2);
+  tft.drawString("FRTyre", 142, 107, 1);
+  tft.drawRoundRect(112, 120, 28, 38, 3, textColor); // Left box
+  tft.drawRoundRect(145, 120, 28, 38, 3, textColor); // Right box
 
-  tft.fillRoundRect(150, 115, 35, 45, 5, 0x07E0);
-  tft.setTextColor(0x0000, 0x07E0);
-  tft.drawString("40", 167, 137, 2);
+
 
   // RL
+  tft.drawRoundRect(15, 170, 75, 55, 3, textColor);
   tft.setTextColor(textColor, bgColor);
-  tft.setTextDatum(BC_DATUM);
-  tft.drawString("RLTyre", 40, 175, 1);
-  tft.fillRoundRect(20, 185, 35, 45, 5, 0x07E0);
-  tft.setTextColor(0x0000, 0x07E0);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("40", 37, 207, 2);
-
-  tft.drawRoundRect(60, 185, 35, 45, 5, textColor);
-  tft.setTextColor(textColor, bgColor);
-  tft.drawString("10", 77, 207, 2);
+  tft.drawString("RLTyre", 52, 167, 1);
+  tft.drawRoundRect(22, 180, 28, 38, 3, textColor); // Left box
+  tft.drawRoundRect(55, 180, 28, 38, 3, textColor); // Right box
 
   // RR
-  tft.setTextDatum(BC_DATUM);
-  tft.drawString("RRTyre", 130, 175, 1);
-  tft.drawRoundRect(110, 185, 35, 45, 5, textColor);
+  tft.drawRoundRect(105, 170, 75, 55, 3, textColor);
   tft.setTextColor(textColor, bgColor);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("10", 127, 207, 2);
+  tft.drawString("RRTyre", 142, 167, 1);
+  tft.drawRoundRect(112, 180, 28, 38, 3, textColor); // Left box
+  tft.drawRoundRect(145, 180, 28, 38, 3, textColor); // Right box
 
-  tft.fillRoundRect(150, 185, 35, 45, 5, 0x07E0);
-  tft.setTextColor(0x0000, 0x07E0);
-  tft.drawString("40", 167, 207, 2);
+
 
   // --- Bottom Left: Small Boxes ---
   // Time
@@ -1792,6 +1849,7 @@ void drawStaticUI() {
 }
 
 void updateDynamicData() {
+  uint16_t textColor = 0xFFFF; // White for boxes
   tft.setTextDatum(MC_DATUM);
 
   uint16_t accentColor = 0x07FF; // Cyan
@@ -1927,6 +1985,24 @@ void updateDynamicData() {
   tft.setTextPadding(80);
   tft.setTextColor(0xFFE0, panelColor); // Yellow
   tft.drawString("+1.045", 200, 300, 2);
+
+  // --- 6. Tyre Temperatures (ESP-NOW) ---
+  tft.setTextDatum(MC_DATUM);
+  
+  tft.setTextPadding(24); // Use padding to prevent flickering!
+  tft.setTextColor(0x07E0, bgColor); // Green on Black
+  
+  // FL
+  tft.drawString("40", 36, 139, 2); // Left box value
+  
+  // FR (Real-time ESP-NOW)
+  tft.drawString(String((int)display_temp_FR), 159, 139, 2); // Right box value
+  
+  // RL
+  tft.drawString("40", 36, 199, 2);
+  
+  // RR
+  tft.drawString("40", 159, 199, 2);
 
   tft.setTextPadding(0);
 }
