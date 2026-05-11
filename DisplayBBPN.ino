@@ -1,98 +1,101 @@
-#include "esp_task_wdt.h"  // ── Disable watchdog during DMP calibration
+#include "esp_task_wdt.h" // ── Disable watchdog during DMP calibration
 #define WHITE_GREY 0xFFFE
-#define BLACK      0x0000
-#define RED        0xF800  
-#define MAROON     0x7800
-#define CYAN       0x07FF
-#define YELLOW     0xFFE0
-#define TFT_GREY   0x2104 
+#define BLACK 0x0000
+#define RED 0xF800
+#define MAROON 0x7800
+#define CYAN 0x07FF
+#define YELLOW 0xFFE0
+#define TFT_GREY 0x2104
 #define ILI9341_WHITE 0xFFFF
-#define ILI9341_GREEN 0x07E0 // 💡 แก้ไขรหัสสีเขียว RGB565 จริง เพื่อไม่ให้ระบบวาดสีกราฟิกค้างขาว
-#define GREEN2RED  4
+#define ILI9341_GREEN                                                          \
+  0x07E0 // 💡 แก้ไขรหัสสีเขียว RGB565 จริง เพื่อไม่ให้ระบบวาดสีกราฟิกค้างขาว
+#define GREEN2RED 4
 
 // F1 Font sizes
 #define FONT_SMALL 1
-#define FONT_MED   2
+#define FONT_MED 2
 #define FONT_LARGE 4
-#define FONT_HUGE  7
+#define FONT_HUGE 7
 #define OUTPUT_READABLE_YAWPITCHROLL
 
-// 💡 ย้ายขา INTERRUPT_PIN หนีจากขา 2 (ไปขา 13) เพื่อปลดปล่อย GPIO 2 คืนให้ไฟสีฟ้าและหน้าจอ
-#define INTERRUPT_PIN 13  
+// 💡 ย้ายขา INTERRUPT_PIN หนีจากขา 2 (ไปขา 13) เพื่อปลดปล่อย GPIO 2
+// คืนให้ไฟสีฟ้าและหน้าจอ
+#define INTERRUPT_PIN 13
 #define Slave_Address 0x08
 ///  ======================== library =============================  ///
 
-#include "Alert.h"       // Out of range alert icon
-#include "image_data.h"  // Out of range alert icon
-#include "Dashboard.h"   // 💡 New beautiful 480×320 dark dashboard
-#include <TFT_eSPI.h> // Hardware-specific library
-#include <SPI.h>
-#include <Wire.h>
+#include "Alert.h"     // Out of range alert icon
+#include "Dashboard.h" // 💡 New beautiful 480×320 dark dashboard
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
+#include "image_data.h" // Out of range alert icon
+#include <SPI.h>
+#include <TFT_eSPI.h> // Hardware-specific library
+#include <Wire.h>
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-    #include "Wire.h"
+#include "Wire.h"
 #endif
-#define dacPin  25  // กำหนดขา DAC ที่ต้องการใช้ (GPIO 25)
+#define dacPin 25 // กำหนดขา DAC ที่ต้องการใช้ (GPIO 25)
 #include <EEPROM.h>
 MPU6050 mpu;
-TFT_eSPI tft = TFT_eSPI(); // Invoke custom library with default width and height
-TFT_eSprite sprite = TFT_eSprite(&tft);  // สร้าง Sprite ที่เชื่อมต่อกับจอ
+TFT_eSPI tft =
+    TFT_eSPI(); // Invoke custom library with default width and height
+TFT_eSprite sprite = TFT_eSprite(&tft); // สร้าง Sprite ที่เชื่อมต่อกับจอ
 
 //------------------ Data -------------------------//
-int BUFF ;
-int RAMP_UP[3]       ;
-int RAMP_DOWN[3]     ;
-int SPEED_LIM[3]     ;
+int BUFF;
+int RAMP_UP[3];
+int RAMP_DOWN[3];
+int SPEED_LIM[3];
 
 //-----------------------------------------------------//
 
-int PRE_RAMP_UP[3]   ;
-int PRE_RAMP_DOWN[3] ;
-int PRE_SPEED_LIM[3] ;
+int PRE_RAMP_UP[3];
+int PRE_RAMP_DOWN[3];
+int PRE_SPEED_LIM[3];
 
 // ================ Address EEPROM =====================//
 
-const int address_RAMP_UP0      =   1 ;  // ตำแหน่งที่ต้องการเก็บข้อมูล in EEPROM
-const int address_RAMP_UP1      =   2 ;
-const int address_RAMP_UP2      =   3 ;
-const int address_RAMP_DOWN0    =   4 ;
-const int address_RAMP_DOWN1    =   5 ;
-const int address_RAMP_DOWN2    =   6 ;
-const int address_SPEED_LIM0    =   7 ;
-const int address_SPEED_LIM1    =   8 ;
-const int address_SPEED_LIM2    =   9 ;
+const int address_RAMP_UP0 = 1; // ตำแหน่งที่ต้องการเก็บข้อมูล in EEPROM
+const int address_RAMP_UP1 = 2;
+const int address_RAMP_UP2 = 3;
+const int address_RAMP_DOWN0 = 4;
+const int address_RAMP_DOWN1 = 5;
+const int address_RAMP_DOWN2 = 6;
+const int address_SPEED_LIM0 = 7;
+const int address_SPEED_LIM1 = 8;
+const int address_SPEED_LIM2 = 9;
 
 // ==================  load bar ================================= //
 // 💡 ปรับสเกลจุดโหลดบาร์กึ่งกลางจอ 4.0 นิ้วใหม่
-const int position_X_bar      =   180  ;
-const int position_Y_bar      =   240  ;
-const int barLong         =   120  ;
-const int barWidth        =   20  ;
+const int position_X_bar = 180;
+const int position_Y_bar = 240;
+const int barLong = 120;
+const int barWidth = 20;
 
 // ==================  position drawBitImage ===================== //
 // 💡 ปรับสเกลจุดรูปกึ่งกลางจอ 4.0 นิ้วใหม่
-const int position_X      =   217  ;
-const int position_Y      =   120  ;
+const int position_X = 217;
+const int position_Y = 120;
 
 // ================== define pin ================================= //
 
-const int S2 = 35;          // CLK
-const int S1 = 34;          // DT
-const int key = 23;         // DT
-const int buttonPin = 33;   // switch
+const int S2 = 35;        // CLK
+const int S1 = 34;        // DT
+const int key = 23;       // DT
+const int buttonPin = 33; // switch
 
 // ================== parameter (int) ============================ //
 
-int hundreds ;
-int tens ;
-int units ;
-int Pre_Rotary ;
-int lastValue_Rotary ;
-int mappedRotary ;
-int Speed  ;
-int Pre_Speed = -1 ;
-int func ;
+int hundreds;
+int tens;
+int units;
+int Pre_Rotary;
+int lastValue_Rotary;
+int mappedRotary;
+int Speed;
+int Pre_Speed = -1;
+int func;
 int buttonState;            // สถานะของปุ่มปัจจุบัน
 int lastButtonState = HIGH; // เก็บสถานะล่าสุดของปุ่ม
 int mode = 0;               // ตัวแปรเก็บโหมดปัจจุบัน
@@ -108,81 +111,85 @@ float simGapBehind = 2.34;
 unsigned long simStartTime = 0;
 
 int dashStyle = 1; // 0 = Classic, 1 = F1 (Set to 1 to show F1 by default)
+int previousSimGear = -1; // Track previous gear for smooth rendering
 
 // Theme color getter functions
-uint16_t get_db_bg()    { return (mode == 2) ? 0x064D : 0x0841; }
+uint16_t get_db_bg() { return (mode == 2) ? 0x064D : 0x0841; }
 uint16_t get_db_panel() { return (mode == 2) ? 0x054A : 0x1082; }
 uint16_t get_db_white() { return (mode == 2) ? 0x0000 : 0xFFFF; }
-uint16_t get_db_grey()  { return (mode == 2) ? 0x2104 : 0x528A; }
+uint16_t get_db_grey() { return (mode == 2) ? 0x2104 : 0x528A; }
 
 int mode1 = 0;
-int reading ;
-int read1 ;
-int read2 ;
+int reading;
+int read1;
+int read2;
 volatile int Rotary = 0; // Value to be incremented or decremented
-unsigned long lastDebounceTime = 0 ;
-unsigned long lastUpdateTime = 0;  // เก็บเวลาส่งข้อมูลครั้งล่าสุด
-const unsigned long UpdateSpeed = 500;  // ช่วงเวลาการส่งข้อมูล (500ms)
-long int potValue = 0;           // ค่าจากโพเทนมิเตอร์
+unsigned long lastDebounceTime = 0;
+unsigned long lastUpdateTime = 0;      // เก็บเวลาส่งข้อมูลครั้งล่าสุด
+const unsigned long UpdateSpeed = 500; // ช่วงเวลาการส่งข้อมูล (500ms)
+long int potValue = 0;                 // ค่าจากโพเทนมิเตอร์
 
 // ================== parameter (float) ========================= //
 
-float angle   ;
-float angle1 = -1 ;
+float angle;
+float angle1 = -1;
 
 // ================== parameter (bool) ========================= //
 
-bool Enter = false ;
+bool Enter = false;
 bool blinkState = false;
-bool show_data = true ;
+bool show_data = true;
 bool lock = true;
-bool PETCH = true ;
+bool PETCH = true;
 bool selectingMode = true; // สถานะว่ากำลังเลือกโหมดหรือไม่
 bool selectingMode1 = true;
-bool cancle = false ;
-bool Petch = true ;
-bool send_para = false ;
+bool cancle = false;
+bool Petch = true;
+bool send_para = false;
 
 // ================= MPU control/status vars ================== //
 
-bool dmpReady = false;    // set true if DMP init was successful
-uint8_t mpuIntStatus;     // holds actual interrupt status byte from MPU
-uint8_t devStatus;        // return status after each device operation (0 = success, !0 = error)
-uint16_t packetSize;      // expected DMP packet size (default is 42 bytes)
-uint16_t fifoCount;       // count of all bytes currently in FIFO
-uint8_t fifoBuffer[64];   // FIFO storage buffer
+bool dmpReady = false; // set true if DMP init was successful
+uint8_t mpuIntStatus;  // holds actual interrupt status byte from MPU
+uint8_t devStatus; // return status after each device operation (0 = success, !0
+                   // = error)
+uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
+uint16_t fifoCount;     // count of all bytes currently in FIFO
+uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // ================== value for i2c ========================== //
 
-int receivedValue [10] ;
+int receivedValue[10];
 
 //---------------------- Function -----------------------------//
 
 int lastPotValue = 0;
-int modeMax = 3;            // จำนวนโหมดที่มี (1-3)
+int modeMax = 3;       // จำนวนโหมดที่มี (1-3)
 int previousMode = -1; // ตัวแปรเก็บค่า mode ก่อนหน้า
-int previousMode1 = -1 ;
+int previousMode1 = -1;
 int xpos = 0, ypos = 5, gap = 4, radius = 52;
-unsigned long lastInterruptTime = 0;  // To keep track of the last interrupt time
-
+unsigned long lastInterruptTime = 0; // To keep track of the last interrupt time
 
 // orientation/motion vars
-Quaternion q;           // [w, x, y, z]         quaternion container
-VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
-VectorFloat gravity;    // [x, y, z]            gravity vector
-float euler[3];         // [psi, theta, phi]    Euler angle container
-float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+Quaternion q;   // [w, x, y, z]         quaternion container
+VectorInt16 aa; // [x, y, z]            accel sensor measurements
+VectorInt16
+    aaReal; // [x, y, z]            gravity-free accel sensor measurements
+VectorInt16
+    aaWorld; // [x, y, z]            world-frame accel sensor measurements
+VectorFloat gravity; // [x, y, z]            gravity vector
+float euler[3];      // [psi, theta, phi]    Euler angle container
+float
+    ypr[3]; // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 // packet structure for InvenSense teapot demo
-uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
+uint8_t teapotPacket[14] = {'$', 0x02, 0, 0,    0,    0,    0,
+                            0,   0,    0, 0x00, 0x00, '\r', '\n'};
 // ================================================================ //
 //               INTERRUPT DETECTION ROUTINE                        //
 // ================================================================ //
-volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
-void dmpDataReady() {
-    mpuInterrupt = true;
-}
+volatile bool mpuInterrupt =
+    false; // indicates whether MPU interrupt pin has gone high
+void dmpDataReady() { mpuInterrupt = true; }
 int d = 0; // Variable used for the sinewave test waveform
 bool range_error = 0;
 int8_t ramp = 1;
@@ -193,39 +200,39 @@ volatile byte lastState = 0; // Keep track of last state
 // =================== Function Rotary ============================ //
 
 void IRAM_ATTR readEncoder() {
-    byte currentState = (digitalRead(S1) << 1) | digitalRead(S2); // Combine S1 and S2 as 2-bit value
+  byte currentState = (digitalRead(S1) << 1) |
+                      digitalRead(S2); // Combine S1 and S2 as 2-bit value
 
-    if ((lastState == 0b00 && currentState == 0b01) || 
-        (lastState == 0b01 && currentState == 0b11) || 
-        (lastState == 0b11 && currentState == 0b10) || 
-        (lastState == 0b10 && currentState == 0b00)) {
-        Rotary += stepSize; // Clockwise
-    } else if ((lastState == 0b00 && currentState == 0b10) || 
-               (lastState == 0b10 && currentState == 0b11) || 
-               (lastState == 0b11 && currentState == 0b01) || 
-               (lastState == 0b01 && currentState == 0b00)) {
-        Rotary -= stepSize; // Counter-clockwise
-    }
-    lastState = currentState;
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
+    Rotary += stepSize; // Clockwise
+  } else if ((lastState == 0b00 && currentState == 0b10) ||
+             (lastState == 0b10 && currentState == 0b11) ||
+             (lastState == 0b11 && currentState == 0b01) ||
+             (lastState == 0b01 && currentState == 0b00)) {
+    Rotary -= stepSize; // Counter-clockwise
+  }
+  lastState = currentState;
 }
 
- 
 //****************************************************************************************************//
 
 void setup(void) {
   // ── 💡 สเต็ปแก้บั๊กกดปุ่มรีเซ็ต: ถ่วงเวลารอระบบจ่ายไฟบอร์ดให้ตื่นเต็มตัวก่อนเริ่มบูต ──
-  delay(1000);                       // รอให้ไฟเลี้ยงบนบอร์ดนิ่งสนิทก่อนเริ่มทำงาน
+  delay(1000); // รอให้ไฟเลี้ยงบนบอร์ดนิ่งสนิทก่อนเริ่มทำงาน
   Serial.begin(115200);
-  delay(500);                        // รอให้ท่อรับส่งข้อมูล Serial บูตตัวเองสำเร็จ
-  yield();                           // สลัดภาระงาน RTOS อื่น ๆ ออกไป
+  delay(500); // รอให้ท่อรับส่งข้อมูล Serial บูตตัวเองสำเร็จ
+  yield();    // สลัดภาระงาน RTOS อื่น ๆ ออกไป
   Serial.println("\n=== BBPN EV CONTROLLER BOOT ===");
 
-  // ── 💡 แก้ไข API Watchdog (ESP-IDF v5) ไม่ให้ตัวตรวจจับคิดว่าบอร์ดเอ๋อระหว่างรอ DMP คาลิเบรต
+  // ── 💡 แก้ไข API Watchdog (ESP-IDF v5) ไม่ให้ตัวตรวจจับคิดว่าบอร์ดเอ๋อระหว่างรอ DMP
+  // คาลิเบรต
   esp_task_wdt_config_t wdt_config = {
-      .timeout_ms = 60000,           // ถ่างเวลาเฝ้าระวังเป็น 60 วินาที (จุใจ)
+      .timeout_ms = 60000, // ถ่างเวลาเฝ้าระวังเป็น 60 วินาที (จุใจ)
       .idle_core_mask = 0,
-      .trigger_panic = false
-  };
+      .trigger_panic = false};
   esp_err_t wdt_err = esp_task_wdt_reconfigure(&wdt_config);
   if (wdt_err != ESP_OK) {
     Serial.print("WDT reconfigure warning: ");
@@ -233,855 +240,819 @@ void setup(void) {
   }
 
   tft.begin();
-  
+
   if (dashStyle == 0) {
-    db_init(tft);                      // 💡 Init dark dashboard (sets rotation, fills BG, draws chrome)
+    db_init(
+        tft); // 💡 Init dark dashboard (sets rotation, fills BG, draws chrome)
   } else {
     tft.setRotation(1); // Landscape
     tft.fillScreen(BLACK);
     simStartTime = millis();
     drawStaticUI();
   }
-  
+
   // 💡 ปรับขยายขนาด Sprite และตั้งจุดหมุนกึ่งกลางจอ 4 นิ้วให้รับส่งสัมพันธ์กันเป๊ะๆ
-  tft.setPivot(375, 160);            
-  sprite.createSprite(170, 160);     // หดสเกลกล่องเพื่อวาดเฉพาะตัวเลขความเร็วให้กึ่งกลางคอลัมน์กลางพอดี
-  sprite.setPivot(85, 80);           // ปักแกนหมุนตรงกลางกล่อง Sprite ของตัวสปีด (170/2, 160/2)
+  tft.setPivot(375, 160);
+  sprite.createSprite(
+      170, 160); // หดสเกลกล่องเพื่อวาดเฉพาะตัวเลขความเร็วให้กึ่งกลางคอลัมน์กลางพอดี
+  sprite.setPivot(85, 80); // ปักแกนหมุนตรงกลางกล่อง Sprite ของตัวสปีด (170/2, 160/2)
   sprite.setFreeFont(&FreeMono18pt7b);
   tft.setFreeFont(&FreeMono18pt7b);
-      
-    // join I2C bus (I2Cdev library doesn't do this automatically)
-    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-        Wire.begin();
-        Wire.setClock(100000); // 💡 บังคับล็อกท่อส่ง I2C ไว้ที่สปีดเสถียร 100kHz เพื่อให้เขียน DMP ผ่านง่ายๆ
-    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-        Fastwire::setup(400, true);
-    #endif
 
-    // ── 💡 ระบบวิเคราะห์ I2C (Diagnostic Scanner) ค้นหาจุดหลวมบนตัวรถแข่ง ──
-    Serial.println(F("Scanning I2C bus..."));
-    int nDevices = 0;
-    for (byte addr = 1; addr < 127; addr++) {
-      Wire.beginTransmission(addr);
-      byte error = Wire.endTransmission();
-      if (error == 0) {
-        Serial.print(F("  Found device at 0x"));
-        if (addr < 16) Serial.print("0");
-        Serial.println(addr, HEX);
-        nDevices++;
-      }
+// join I2C bus (I2Cdev library doesn't do this automatically)
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+  Wire.begin();
+  Wire.setClock(
+      100000); // 💡 บังคับล็อกท่อส่ง I2C ไว้ที่สปีดเสถียร 100kHz เพื่อให้เขียน DMP ผ่านง่ายๆ
+#elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+  Fastwire::setup(400, true);
+#endif
+
+  // ── 💡 ระบบวิเคราะห์ I2C (Diagnostic Scanner) ค้นหาจุดหลวมบนตัวรถแข่ง ──
+  Serial.println(F("Scanning I2C bus..."));
+  int nDevices = 0;
+  for (byte addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    byte error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.print(F("  Found device at 0x"));
+      if (addr < 16)
+        Serial.print("0");
+      Serial.println(addr, HEX);
+      nDevices++;
     }
-    if (nDevices == 0) {
-      Serial.println(F("  *** NO I2C devices found! Check SDA/SCL wiring ***"));
-    } else {
-      Serial.print(F("  Total: "));
-      Serial.print(nDevices);
-      Serial.println(F(" device(s)"));
-    }
-    Serial.println(F("──────────────────────────────────"));
+  }
+  if (nDevices == 0) {
+    Serial.println(F("  *** NO I2C devices found! Check SDA/SCL wiring ***"));
+  } else {
+    Serial.print(F("  Total: "));
+    Serial.print(nDevices);
+    Serial.println(F(" device(s)"));
+  }
+  Serial.println(F("──────────────────────────────────"));
 
-    // initialize device
-    Serial.println(F("Initializing I2C devices..."));
-    mpu.initialize();
-    pinMode(INTERRUPT_PIN, INPUT);
-    delay(1500); // 💡 ปล่อยแรงดันไฟเลี้ยง I2C คลอตัวนิ่งสนิทก่อนเริ่มโหลดข้อมูลเฟิร์มแวร์
-    // verify connection
-    Serial.println(F("Testing device connections..."));
-    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-    delay(1500);
-    // load and configure the DMP
-    Serial.println(F("Initializing DMP..."));
-    devStatus = mpu.dmpInitialize();
-    mpu.setXGyroOffset(220);
-    mpu.setYGyroOffset(76);
-    mpu.setZGyroOffset(-85);
-    mpu.setZAccelOffset(1788); 
-    if (devStatus == 0) {
-        Serial.println(">>> devStatus = 0 : DMP init SUCCESS <<<");
-        mpu.CalibrateAccel(6);
-        mpu.CalibrateGyro(6);
-        mpu.PrintActiveOffsets();
-        Serial.println(F("Enabling DMP..."));
-        mpu.setDMPEnabled(true);
-        Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
-        Serial.println(F(")..."));
-        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
-        mpuIntStatus = mpu.getIntStatus();
-        Serial.println(F("DMP ready! Waiting for first interrupt..."));
-        dmpReady = true;
-        Serial.print(">>> packetSize = "); Serial.println(mpu.dmpGetFIFOPacketSize());
-        packetSize = mpu.dmpGetFIFOPacketSize();
-    } else {
-        Serial.print(F("DMP Initialization failed (code "));
-        Serial.print(devStatus);
-        Serial.println(F(")"));
-    }
-// ======================= set pin input ===================================//
+  // initialize device
+  Serial.println(F("Initializing I2C devices..."));
+  mpu.initialize();
+  pinMode(INTERRUPT_PIN, INPUT);
+  delay(1500); // 💡 ปล่อยแรงดันไฟเลี้ยง I2C คลอตัวนิ่งสนิทก่อนเริ่มโหลดข้อมูลเฟิร์มแวร์
+  // verify connection
+  Serial.println(F("Testing device connections..."));
+  Serial.println(mpu.testConnection() ? F("MPU6050 connection successful")
+                                      : F("MPU6050 connection failed"));
+  delay(1500);
+  // load and configure the DMP
+  Serial.println(F("Initializing DMP..."));
+  devStatus = mpu.dmpInitialize();
+  mpu.setXGyroOffset(220);
+  mpu.setYGyroOffset(76);
+  mpu.setZGyroOffset(-85);
+  mpu.setZAccelOffset(1788);
+  if (devStatus == 0) {
+    Serial.println(">>> devStatus = 0 : DMP init SUCCESS <<<");
+    mpu.CalibrateAccel(6);
+    mpu.CalibrateGyro(6);
+    mpu.PrintActiveOffsets();
+    Serial.println(F("Enabling DMP..."));
+    mpu.setDMPEnabled(true);
+    Serial.print(
+        F("Enabling interrupt detection (Arduino external interrupt "));
+    Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+    Serial.println(F(")..."));
+    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+    mpuIntStatus = mpu.getIntStatus();
+    Serial.println(F("DMP ready! Waiting for first interrupt..."));
+    dmpReady = true;
+    Serial.print(">>> packetSize = ");
+    Serial.println(mpu.dmpGetFIFOPacketSize());
+    packetSize = mpu.dmpGetFIFOPacketSize();
+  } else {
+    Serial.print(F("DMP Initialization failed (code "));
+    Serial.print(devStatus);
+    Serial.println(F(")"));
+  }
+  // ======================= set pin input ===================================//
 
-    pinMode(buttonPin , INPUT_PULLUP);  
-    pinMode(S2, INPUT);
-    pinMode(S1, INPUT);
-    
-// ================= Attach interrupt to S2 (CLK) ======================== //
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(S2, INPUT);
+  pinMode(S1, INPUT);
 
-    attachInterrupt(digitalPinToInterrupt(S2), readEncoder, CHANGE);
-    Serial.println("Rotary Encoder Initialized");
-    
-// ======================================================================= //
-    
-    EEPROM_SET() ;
-    HELLO();
-    tft.setTextDatum(TL_DATUM);
-    
+  // ================= Attach interrupt to S2 (CLK) ======================== //
+
+  attachInterrupt(digitalPinToInterrupt(S2), readEncoder, CHANGE);
+  Serial.println("Rotary Encoder Initialized");
+
+  // ======================================================================= //
+
+  EEPROM_SET();
+  HELLO();
+  tft.setTextDatum(TL_DATUM);
 }
 
 void loop() {
-  Main_task () ;
+  Main_task();
   delay(10); // ปรับลดดีเลย์หน่วงลูปใหญ่เพื่อเพิ่มความไวตอบสนองของตัว Rotary
-  if(Pre_Rotary != Rotary) {
-    dacWrite(dacPin, 0); 
+  if (Pre_Rotary != Rotary) {
+    dacWrite(dacPin, 0);
     if (Pre_Rotary != Rotary) {
-        dacWrite(dacPin, 0); 
+      dacWrite(dacPin, 0);
 
-        if (Rotary < -1) {
-            handleRotaryBelowThreshold();
-        } else if (Rotary > 1) {
-            handleRotaryAboveThreshold();
+      if (Rotary < -1) {
+        handleRotaryBelowThreshold();
+      } else if (Rotary > 1) {
+        handleRotaryAboveThreshold();
+      }
+
+      Rotary = 0;
+      Pre_Rotary = Rotary;
+    }
+  }
+
+  //----------------------------------------------------------------------------------------//
+
+  if (Petch == true) {
+
+    if (digitalRead(buttonPin) == 1) {
+      Pre_Speed = -1;
+      dacWrite(dacPin, 0);
+      Rotary = 0;
+      while (digitalRead(buttonPin) == 1)
+        ;
+      mode1 = 0;
+      cancle = false;
+      unsigned long previousMillis = millis();
+      int previousValue = -1;
+      int currentValue;
+      db_drawChrome(tft); // ✅ dark chrome
+      Pre_Speed = -1;
+      previousMode1 = -1;
+      sendCommandToSlave('S');
+      while (cancle == false) {
+        if (Rotary > 30) {
+          Rotary = 0;
         }
-
-        Rotary = 0;
-        Pre_Rotary = Rotary;
-    }
-}
-
-
-//----------------------------------------------------------------------------------------//
-
-  if(Petch == true){
-  
-  if(digitalRead(buttonPin) == 1){
-          Pre_Speed = -1;    
-          dacWrite(dacPin, 0); 
-          Rotary = 0 ;
-          while(digitalRead(buttonPin) == 1) ;
-                  mode1 = 0;    
-                  cancle = false ;
-                  unsigned long previousMillis = millis() ;
-                  int previousValue = -1 ;
-                  int currentValue ;
-                  db_drawChrome(tft);   // ✅ dark chrome
-                  Pre_Speed = -1;
-                  previousMode1 = -1 ;
-                  sendCommandToSlave('S');
-                  while (cancle == false)
-                 {
-                    if (Rotary>30) {
-                      Rotary = 0 ;
-                      }
-                    if (Rotary<-15) {
-                      Rotary = 0 ;
-                      }    
-                Serial.print("Value Rotary: ");
-                Serial.print(Rotary);  
-                if (Rotary >= 0 && Rotary <= 5) {
-                    mode1 = 0;
-                }
-                else if (Rotary >= 7 && Rotary <= 13) {
-                    mode1 = 1;
-                }
-                else if (Rotary >= 16 && Rotary <= 22) {
-                    mode1 = 2;
-                }
-                else if (Rotary >= 25 && Rotary <= 30) {
-                    mode1 = 3;
-                }
-                else if(Rotary <= -3 && Rotary >= -8){
-                    mode1 = 2 ;
-                }
-                else if(Rotary <= -9 && Rotary >= -14){
-                    mode1 = 1 ;
-                }
-                Serial.print("Current mode: ");
-                Serial.println(mode1);
-                     if (mode1 != previousMode1)
-                     {  
-                        if (mode1 == 3) {
-                          tft.fillScreen(BLACK);
-                          tft.setTextColor(ILI9341_WHITE, BLACK);
-                          tft.setTextDatum(MC_DATUM);
-                          tft.drawString("Menu: Dash Style", 240, 160, 4);
-                        } else {
-                          Set_Parameter();         
-                        }
-                        previousMode1 = mode1;   
-                     }
-        //---------------***********************************-------------------------//            
-                     if (digitalRead(buttonPin) == 1)  //-----------
-                          {
-                            previousValue = -1 ;
-                            delay(1);
-                          if(digitalRead(buttonPin)==1 )
-                              { Rotary = 0 ;
-                                while(digitalRead(buttonPin) == 1) ;
-                                selectingMode = true ;
-                                selectingMode1 = true ;
-                                while (selectingMode == true)
-                                { 
-                                  Serial.println("petch23");
-                                  if (mode1 == 0)
-                                  { 
-                                    int value_X ;
-                                    unsigned long previousMillis = millis();  
-                                    int previousValue = -1 ;
-                                    tft.fillScreen(TFT_BLACK);
-                                    while (selectingMode1 == true)
-                                    {  int mappedValue = map(Rotary, 0, 200, 0, 99);  
-                                       value_X = Rotary ;
-                                       Rotary = constrain(Rotary, -100, 100);
-                                        Serial.println("Setting SpeedUp");
-                                       if(value_X > 99 ) {
-                                          value_X = 99 ;
-                                        }  
-                                                    
-                                                                                      
-                                        // เช็คว่าค่ามีการเปลี่ยนแปลงหรือไม่
-                                        if (value_X != previousValue)
-                                          { 
-                                            if (mode == 0){
-                                              PRE_RAMP_UP[0] = RAMP_UP[0] ;
-                                              BUFF = PRE_RAMP_UP[0] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                            if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            SET_RAMP_UP(BUFF) ;
-                                            }
-                                            if (mode == 1){
-                                              PRE_RAMP_UP[1] = RAMP_UP[1] ;
-                                              BUFF = PRE_RAMP_UP[1] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                            if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            SET_RAMP_UP(BUFF) ;
-                                            } 
-                                            if (mode == 2){
-                                            PRE_RAMP_UP[2] = RAMP_UP[2] ;
-                                            BUFF = PRE_RAMP_UP[2] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ; 
-                                            } 
-                                            if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            SET_RAMP_UP(BUFF) ;
-                                            } 
-                                            
-
-                                            previousValue = value_X;  
-                                            previousMillis = millis();     
-                                          }
-                                        PETCH = true ;
-                                        unsigned long buttonPressStart = millis() ;   
-                                        while(digitalRead(buttonPin) == 1 && PETCH == true ) {
-                                          Serial.println("A") ;
-                                          if (millis() - buttonPressStart >= 2000) {
-                                              Serial.println("ทำงาน 1: ปุ่มถูกกดค้าง 3 วินาที");
-                                              Enter = true ;
-                                              PETCH = false ;
-                                              if (mode == 0){
-                                            
-                                            RAMP_UP[0] = BUFF ;
-                                            EEPROM.write(address_RAMP_UP0, RAMP_UP[0]);  
-                                            EEPROM.commit();               
-                                            
-                                            }
-                                            if (mode == 1){
-                                            
-                                            RAMP_UP[1] = BUFF ;
-                                            EEPROM.write(address_RAMP_UP1, RAMP_UP[1]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            if (mode == 2){
-                                              
-                                            RAMP_UP[2] = BUFF ;
-                                            EEPROM.write(address_RAMP_UP2, RAMP_UP[2]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            selectingMode1 = false;
-                                            selectingMode = false;
-                                            cancle = true ;
-                                            db_drawSaving(tft);  // ✅ dark saving screen
-                                            drawBitImage(position_X, position_Y, 46, 40, image_data_Screenshot20250103021558,2);
-                                            delay(10);
-                                            for (int i = 0; i <= 100; i++) {
-                                            int fillWidth = map(i, 0, 100, 0, barLong);
-                                            drawLoadingBar(position_X_bar, position_Y_bar, barLong, barWidth, fillWidth);
-                                            delay(10); 
-                                            }
-                                            Data_to_ESPslave('D',func);
-                                            delay(10);
-                                            
-                                          }else if(digitalRead(buttonPin) == 0){
-                                              PETCH = false ;
-                                              Serial.println("ทำงาน 2: ปุ่มถูกกดค้าง 3 วินาที");
-                                              if (mode == 0){
-                                            RAMP_UP[0] = BUFF ;
-                                            EEPROM.write(address_RAMP_UP0, RAMP_UP[0]);  
-                                            EEPROM.commit();               
-                                            
-                                            }
-                                            if (mode == 1){
-                                            
-                                            RAMP_UP[1] = BUFF ;
-                                            EEPROM.write(address_RAMP_UP1, RAMP_UP[1]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            if (mode == 2){
-                                              
-                                            RAMP_UP[2] = BUFF ;
-                                            EEPROM.write(address_RAMP_UP2, RAMP_UP[2]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            selectingMode1 = false;
-                                            selectingMode = false;
-                                            }
-                                        }  
-                                        Serial.println("KKKK");
-                                      
-                                      
-                                        if (millis() - previousMillis > 5000) 
-                                          {
-                                              selectingMode1 = false;  
-                                              selectingMode = false;
-                                              
-                                          }
-                                    }
-                                                                                                        
-                                  }   
-                                  ////----------------------------------------------------------------------------------//                                                
-                                  if (mode1 == 1)
-                                  { 
-                                    unsigned long previousMillis = millis();  
-                                    int previousValue = -1 ;
-                                    int value_X ;
-                                    tft.fillScreen(TFT_BLACK);
-                                    while (selectingMode1 == true)
-                                    {  int mappedValue = map(Rotary, 0, 200, 0, 99);  
-                                       value_X = Rotary ;
-                                       Rotary = constrain(Rotary, -100, 100);
-                                        Serial.println("Setting SpeedDown");
-                                        if(value_X > 99 ) {
-                                          value_X = 99 ;
-                                        } 
-                                        if (value_X != previousValue)
-                                           { 
-                                            if (mode == 0){
-                                            PRE_RAMP_DOWN[0] = RAMP_DOWN[0] ;
-                                            BUFF = PRE_RAMP_DOWN[0] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                             if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            SET_RAMP_DOWN(BUFF) ;
-                                            }
-                                            if (mode == 1){
-                                            PRE_RAMP_DOWN[1] = RAMP_DOWN[1] ;
-                                            BUFF = PRE_RAMP_DOWN[1] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                            if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            SET_RAMP_DOWN(BUFF) ;
-                                            } 
-                                            if (mode == 2){
-                                            PRE_RAMP_DOWN[2] = RAMP_DOWN[2] ;
-                                            BUFF = PRE_RAMP_DOWN[2] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            } 
-                                            if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            } 
-                                            SET_RAMP_DOWN(BUFF) ;
-                                            } 
-                                            
-
-                                            previousValue = value_X;  
-                                            previousMillis = millis();     
-                                          }
-                                          PETCH = true ;
-                                        unsigned long buttonPressStart = millis() ; 
-                                        while(digitalRead(buttonPin) == 1 && PETCH == true ) {
-                                          if (millis() - buttonPressStart >= 2000) {
-                                              Serial.println("ทำงาน 1: ปุ่มถูกกดค้าง 3 วินาที");
-                                              Enter = true ;
-                                              PETCH = false ;
-                                              if (mode == 0){
-                                            
-                                            RAMP_DOWN[0] = BUFF ;
-                                            EEPROM.write(address_RAMP_DOWN0, RAMP_DOWN[0]);  
-                                            EEPROM.commit();               
-                                            
-                                            }
-                                            if (mode == 1){
-                                            
-                                            RAMP_DOWN[1] = BUFF ;
-                                            EEPROM.write(address_RAMP_DOWN1, RAMP_DOWN[1]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            if (mode == 2){
-                                              
-                                            RAMP_DOWN[2] = BUFF ;
-                                            EEPROM.write(address_RAMP_DOWN2, RAMP_DOWN[2]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            selectingMode1 = false;
-                                            selectingMode = false;
-                                            cancle = true ;
-                                            db_drawSaving(tft);  
-                                            drawBitImage(position_X, position_Y, 46, 40, image_data_Screenshot20250103021558,2);
-                                            delay(10);
-                                            for (int i = 0; i <= 100; i++) {
-                                            int fillWidth = map(i, 0, 100, 0, barLong);
-                                            drawLoadingBar(position_X_bar, position_Y_bar, barLong, barWidth, fillWidth);
-                                            delay(10); 
-                                            }
-                                            Data_to_ESPslave('D',func);
-                                            delay(10);
-                                            
-                                          }else if(digitalRead(buttonPin) == 0){
-                                              PETCH = false ;
-                                              if (mode == 0){
-                                            RAMP_DOWN[0] = BUFF ;
-                                            EEPROM.write(address_RAMP_DOWN0, RAMP_DOWN[0]);  
-                                            EEPROM.commit();               
-                                            
-                                            }
-                                            if (mode == 1){
-                                            
-                                            RAMP_DOWN[1] = BUFF ;
-                                            EEPROM.write(address_RAMP_DOWN1, RAMP_DOWN[1]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            if (mode == 2){
-                                              
-                                            RAMP_DOWN[2] = BUFF ;
-                                            EEPROM.write(address_RAMP_DOWN2, RAMP_DOWN[2]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            selectingMode1 = false;
-                                            selectingMode = false;
-                                            }
-                                        }  
-                                                                                    
-
-                                        if (millis() - previousMillis > 5000) 
-                                          {
-                                              selectingMode1 = false;  
-                                              selectingMode = false;
-                                          }
-                                    }
-                                    
-                                  }
-                                  ////----------------------------------------------------------------------------------//  
-                                  if (mode1 == 2)
-                                  { 
-                                    unsigned long previousMillis = millis();  
-                                    int previousValue = -1 ;
-                                    int value_X ;
-                                    tft.fillScreen(TFT_BLACK);
-                                    while (selectingMode1 == true)
-                                    {  int mappedValue = map(Rotary, 0, 200, 0, 99);  
-                                       value_X = Rotary ;
-                                       Rotary = constrain(Rotary, -100, 100);
-                                        Serial.println("Setting Limite_Speed");
-                                        if(value_X > 99 ) {
-                                           value_X = 99 ;
-                                        }  
-                                        if (value_X != previousValue)
-                                          { 
-                                            if (mode == 0){
-                                            PRE_SPEED_LIM[0] = SPEED_LIM[0] ;
-                                            BUFF = PRE_SPEED_LIM[0] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                             if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            LIM_SPEED(BUFF) ;
-                                            }
-                                            if (mode == 1){
-                                            PRE_SPEED_LIM[1] = SPEED_LIM[1] ;
-                                            BUFF = PRE_SPEED_LIM[1] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                             if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            LIM_SPEED(BUFF) ;
-                                            } 
-                                            if (mode == 2){
-                                            PRE_SPEED_LIM[2] = SPEED_LIM[2] ;  
-                                            BUFF = PRE_SPEED_LIM[2] + value_X ;
-                                            if (BUFF>99){
-                                              BUFF = 99 ;
-                                            }
-                                             if (BUFF<0){
-                                              BUFF = 0 ;
-                                             
-                                            }
-                                            LIM_SPEED(BUFF) ;
-                                            } 
-                                            
-
-                                            previousValue = value_X;  
-                                            previousMillis = millis();     
-                                             
-                                          }
-                                           PETCH = true ;
-                                        unsigned long buttonPressStart = millis() ; 
-                                        while(digitalRead(buttonPin) == 1 && PETCH == true ) {
-                                          Serial.println("A") ;
-                                          if (millis() - buttonPressStart >= 2000) {
-                                              Serial.println("ทำงาน 1: ปุ่มถูกกดค้าง 3 วินาที");
-                                              Enter = true ;
-                                              PETCH = false ;
-                                              if (mode == 0){
-                                            
-                                            SPEED_LIM[0] = BUFF ;
-                                            EEPROM.write(address_SPEED_LIM0, SPEED_LIM[0]);  
-                                            EEPROM.commit();               
-                                            
-                                            }
-                                            if (mode == 1){
-                                            
-                                            SPEED_LIM[1] = BUFF ;
-                                            EEPROM.write(address_SPEED_LIM1, SPEED_LIM[1]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            if (mode == 2){
-                                              
-                                            SPEED_LIM[2] = BUFF ;
-                                            EEPROM.write(address_SPEED_LIM2, SPEED_LIM[2]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            selectingMode1 = false;
-                                            selectingMode = false;
-                                            cancle = true ;
-                                            db_drawSaving(tft);  
-                                            drawBitImage(position_X, position_Y, 46, 40, image_data_Screenshot20250103021558,2);
-                                            delay(10);
-                                            for (int i = 0; i <= 100; i++) {
-                                            int fillWidth = map(i, 0, 100, 0, barLong);
-                                            drawLoadingBar(position_X_bar, position_Y_bar, barLong, barWidth, fillWidth);
-                                            delay(10); 
-                                            }
-                                            Data_to_ESPslave('D',func);
-                                            delay(10);
-                                          }else if(digitalRead(buttonPin) == 0){
-                                              PETCH = false ;
-                                              Serial.println("ทำงาน 2: ปุ่มถูกกดค้าง 3 วินาที");
-                                              if (mode == 0){
-                                            
-                                            SPEED_LIM[0] = BUFF ;
-                                            EEPROM.write(address_SPEED_LIM0, SPEED_LIM[0]);  
-                                            EEPROM.commit();               
-                                            
-                                            }
-                                            if (mode == 1){
-                                            
-                                            SPEED_LIM[1] = BUFF ;
-                                            EEPROM.write(address_SPEED_LIM1, SPEED_LIM[1]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            if (mode == 2){
-                                              
-                                            SPEED_LIM[2] = BUFF ;
-                                            EEPROM.write(address_SPEED_LIM2, SPEED_LIM[2]);  
-                                            EEPROM.commit();               
-                                            
-                                            } 
-                                            selectingMode1 = false;
-                                            selectingMode = false;
-                                            }
-                                        }  
-                                                                                    
-
-                                        if (millis() - previousMillis > 5000) 
-                                          {
-                                              selectingMode1 = false;  
-                                              selectingMode = false;
-                                          }
-                                    }
-                                    
-                                  }
-                                  if (mode1 == 3)
-                                  { 
-                                    unsigned long previousMillis = millis();  
-                                    int previousValue = -1 ;
-                                    int value_X ;
-                                    
-                                    tft.fillScreen(TFT_BLACK);
-                                    tft.setTextColor(ILI9341_WHITE, BLACK);
-                                    tft.setTextDatum(MC_DATUM);
-                                    tft.drawString("SELECT DASH STYLE", 240, 50, 4);
-                                    
-                                    // Draw static boxes
-                                    // Box 1: Classic
-                                    tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208); // Subtle grey
-                                    tft.drawString("CLASSIC", 130, 160, 2);
-                                    
-                                    // Box 2: F1 Style
-                                    tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208); // Subtle grey
-                                    tft.drawString("F1 STYLE", 350, 160, 2);
-
-                                    while (selectingMode1 == true)
-                                    {  
-                                       // Toggle between 0 and 1 using Rotary
-                                       value_X = abs(Rotary) % 2; 
-                                       
-                                        if (value_X != previousValue)
-                                          { 
-                                            if (value_X == 0) {
-                                              // Highlight Classic
-                                              tft.drawRoundRect(40, 100, 180, 120, 10, CYAN);
-                                              tft.drawRoundRect(41, 101, 178, 118, 9, CYAN); // Thicker border
-                                              
-                                              // Un-highlight F1
-                                              tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
-                                              tft.drawRoundRect(261, 101, 178, 118, 9, BLACK); // Clear thick border
-                                            } else {
-                                              // Highlight F1
-                                              tft.drawRoundRect(260, 100, 180, 120, 10, CYAN);
-                                              tft.drawRoundRect(261, 101, 178, 118, 9, CYAN); // Thicker border
-                                              
-                                              // Un-highlight Classic
-                                              tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
-                                              tft.drawRoundRect(41, 101, 178, 118, 9, BLACK); // Clear thick border
-                                            }
-                                            previousValue = value_X;  
-                                            previousMillis = millis();     
-                                          }
-                                          
-                                        PETCH = true ;
-                                        unsigned long buttonPressStart = millis() ; 
-                                        while(digitalRead(buttonPin) == 1 && PETCH == true ) {
-                                          if (millis() - buttonPressStart >= 2000) {
-                                              dashStyle = value_X;
-                                              selectingMode1 = false;
-                                              selectingMode = false;
-                                              cancle = true ;
-                                              
-                                              tft.fillScreen(BLACK);
-                                              if (dashStyle == 1) {
-                                                drawStaticUI();
-                                              } else {
-                                                db_init(tft);
-                                              }
-                                              
-                                              PETCH = false;
-                                          } else if (digitalRead(buttonPin) == 0) {
-                                              PETCH = false;
-                                              dashStyle = value_X;
-                                              selectingMode1 = false;
-                                              selectingMode = false;
-                                              
-                                              tft.fillScreen(BLACK);
-                                              if (dashStyle == 1) {
-                                                drawStaticUI();
-                                              } else {
-                                                db_init(tft);
-                                              }
-                                          }
-                                        }
-                                        
-                                        if (millis() - previousMillis > 5000) 
-                                          {
-                                              selectingMode1 = false;  
-                                              selectingMode = false;
-                                          }
-                                    }
-                                  }
-                                  ////----------------------------------------------------------------------------------// 
-                                }
-                                tft.fillScreen(DB_BG);
-                              }
-                            previousMode1 = -1 ;
-                            mode1 = 0 ;
-                            Rotary = 0 ;
-                            
-                          } //------------
-                    
-                       currentValue = Rotary ;
-                    if (currentValue != previousValue)
-                      { 
-                        previousValue = currentValue;  
-                        previousMillis = millis();     
-                                          }
-                    if (millis() - previousMillis > 5000)
-                      {
-                        sendCommandToSlave('C')  ; 
-                        cancle = true ;
-                      }
-                 }  //------------mode 1 
-          db_drawChrome(tft);   // ✅ dark chrome after param edit
-          tft.setTextDatum(TL_DATUM);
-          Pre_Rotary = Rotary ;
-          Petch = false ;
-          
-      } ///- ------------ mode
- 
-  } else {
-           if (digitalRead(buttonPin) == 1 ){
-            Petch = false ;
-          } else{
-            Petch = true ;
+        if (Rotary < -15) {
+          Rotary = 0;
+        }
+        Serial.print("Value Rotary: ");
+        Serial.print(Rotary);
+        if (Rotary >= 0 && Rotary <= 5) {
+          mode1 = 0;
+        } else if (Rotary >= 7 && Rotary <= 13) {
+          mode1 = 1;
+        } else if (Rotary >= 16 && Rotary <= 22) {
+          mode1 = 2;
+        } else if (Rotary >= 25 && Rotary <= 30) {
+          mode1 = 3;
+        } else if (Rotary <= -3 && Rotary >= -8) {
+          mode1 = 2;
+        } else if (Rotary <= -9 && Rotary >= -14) {
+          mode1 = 1;
+        }
+        Serial.print("Current mode: ");
+        Serial.println(mode1);
+        if (mode1 != previousMode1) {
+          if (mode1 == 3) {
+            tft.fillScreen(BLACK);
+            tft.setTextColor(ILI9341_WHITE, BLACK);
+            tft.setTextDatum(MC_DATUM);
+            tft.drawString("Menu: Dash Style", 240, 160, 4);
+          } else {
+            Set_Parameter();
           }
+          previousMode1 = mode1;
+        }
+        //---------------***********************************-------------------------//
+        if (digitalRead(buttonPin) == 1) //-----------
+        {
+          previousValue = -1;
+          delay(1);
+          if (digitalRead(buttonPin) == 1) {
+            Rotary = 0;
+            while (digitalRead(buttonPin) == 1)
+              ;
+            selectingMode = true;
+            selectingMode1 = true;
+            while (selectingMode == true) {
+              Serial.println("petch23");
+              if (mode1 == 0) {
+                int value_X;
+                unsigned long previousMillis = millis();
+                int previousValue = -1;
+                tft.fillScreen(TFT_BLACK);
+                while (selectingMode1 == true) {
+                  int mappedValue = map(Rotary, 0, 200, 0, 99);
+                  value_X = Rotary;
+                  Rotary = constrain(Rotary, -100, 100);
+                  Serial.println("Setting SpeedUp");
+                  if (value_X > 99) {
+                    value_X = 99;
+                  }
+
+                  // เช็คว่าค่ามีการเปลี่ยนแปลงหรือไม่
+                  if (value_X != previousValue) {
+                    if (mode == 0) {
+                      PRE_RAMP_UP[0] = RAMP_UP[0];
+                      BUFF = PRE_RAMP_UP[0] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      SET_RAMP_UP(BUFF);
+                    }
+                    if (mode == 1) {
+                      PRE_RAMP_UP[1] = RAMP_UP[1];
+                      BUFF = PRE_RAMP_UP[1] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      SET_RAMP_UP(BUFF);
+                    }
+                    if (mode == 2) {
+                      PRE_RAMP_UP[2] = RAMP_UP[2];
+                      BUFF = PRE_RAMP_UP[2] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      SET_RAMP_UP(BUFF);
+                    }
+
+                    previousValue = value_X;
+                    previousMillis = millis();
+                  }
+                  PETCH = true;
+                  unsigned long buttonPressStart = millis();
+                  while (digitalRead(buttonPin) == 1 && PETCH == true) {
+                    Serial.println("A");
+                    if (millis() - buttonPressStart >= 2000) {
+                      Serial.println("ทำงาน 1: ปุ่มถูกกดค้าง 3 วินาที");
+                      Enter = true;
+                      PETCH = false;
+                      if (mode == 0) {
+
+                        RAMP_UP[0] = BUFF;
+                        EEPROM.write(address_RAMP_UP0, RAMP_UP[0]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 1) {
+
+                        RAMP_UP[1] = BUFF;
+                        EEPROM.write(address_RAMP_UP1, RAMP_UP[1]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 2) {
+
+                        RAMP_UP[2] = BUFF;
+                        EEPROM.write(address_RAMP_UP2, RAMP_UP[2]);
+                        EEPROM.commit();
+                      }
+                      selectingMode1 = false;
+                      selectingMode = false;
+                      cancle = true;
+                      db_drawSaving(tft); // ✅ dark saving screen
+                      drawBitImage(position_X, position_Y, 46, 40,
+                                   image_data_Screenshot20250103021558, 2);
+                      delay(10);
+                      for (int i = 0; i <= 100; i++) {
+                        int fillWidth = map(i, 0, 100, 0, barLong);
+                        drawLoadingBar(position_X_bar, position_Y_bar, barLong,
+                                       barWidth, fillWidth);
+                        delay(10);
+                      }
+                      Data_to_ESPslave('D', func);
+                      delay(10);
+
+                    } else if (digitalRead(buttonPin) == 0) {
+                      PETCH = false;
+                      Serial.println("ทำงาน 2: ปุ่มถูกกดค้าง 3 วินาที");
+                      if (mode == 0) {
+                        RAMP_UP[0] = BUFF;
+                        EEPROM.write(address_RAMP_UP0, RAMP_UP[0]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 1) {
+
+                        RAMP_UP[1] = BUFF;
+                        EEPROM.write(address_RAMP_UP1, RAMP_UP[1]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 2) {
+
+                        RAMP_UP[2] = BUFF;
+                        EEPROM.write(address_RAMP_UP2, RAMP_UP[2]);
+                        EEPROM.commit();
+                      }
+                      selectingMode1 = false;
+                      selectingMode = false;
+                    }
+                  }
+                  Serial.println("KKKK");
+
+                  if (millis() - previousMillis > 5000) {
+                    selectingMode1 = false;
+                    selectingMode = false;
+                  }
+                }
+              }
+              ////----------------------------------------------------------------------------------//
+              if (mode1 == 1) {
+                unsigned long previousMillis = millis();
+                int previousValue = -1;
+                int value_X;
+                tft.fillScreen(TFT_BLACK);
+                while (selectingMode1 == true) {
+                  int mappedValue = map(Rotary, 0, 200, 0, 99);
+                  value_X = Rotary;
+                  Rotary = constrain(Rotary, -100, 100);
+                  Serial.println("Setting SpeedDown");
+                  if (value_X > 99) {
+                    value_X = 99;
+                  }
+                  if (value_X != previousValue) {
+                    if (mode == 0) {
+                      PRE_RAMP_DOWN[0] = RAMP_DOWN[0];
+                      BUFF = PRE_RAMP_DOWN[0] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      SET_RAMP_DOWN(BUFF);
+                    }
+                    if (mode == 1) {
+                      PRE_RAMP_DOWN[1] = RAMP_DOWN[1];
+                      BUFF = PRE_RAMP_DOWN[1] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      SET_RAMP_DOWN(BUFF);
+                    }
+                    if (mode == 2) {
+                      PRE_RAMP_DOWN[2] = RAMP_DOWN[2];
+                      BUFF = PRE_RAMP_DOWN[2] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      SET_RAMP_DOWN(BUFF);
+                    }
+
+                    previousValue = value_X;
+                    previousMillis = millis();
+                  }
+                  PETCH = true;
+                  unsigned long buttonPressStart = millis();
+                  while (digitalRead(buttonPin) == 1 && PETCH == true) {
+                    if (millis() - buttonPressStart >= 2000) {
+                      Serial.println("ทำงาน 1: ปุ่มถูกกดค้าง 3 วินาที");
+                      Enter = true;
+                      PETCH = false;
+                      if (mode == 0) {
+
+                        RAMP_DOWN[0] = BUFF;
+                        EEPROM.write(address_RAMP_DOWN0, RAMP_DOWN[0]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 1) {
+
+                        RAMP_DOWN[1] = BUFF;
+                        EEPROM.write(address_RAMP_DOWN1, RAMP_DOWN[1]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 2) {
+
+                        RAMP_DOWN[2] = BUFF;
+                        EEPROM.write(address_RAMP_DOWN2, RAMP_DOWN[2]);
+                        EEPROM.commit();
+                      }
+                      selectingMode1 = false;
+                      selectingMode = false;
+                      cancle = true;
+                      db_drawSaving(tft);
+                      drawBitImage(position_X, position_Y, 46, 40,
+                                   image_data_Screenshot20250103021558, 2);
+                      delay(10);
+                      for (int i = 0; i <= 100; i++) {
+                        int fillWidth = map(i, 0, 100, 0, barLong);
+                        drawLoadingBar(position_X_bar, position_Y_bar, barLong,
+                                       barWidth, fillWidth);
+                        delay(10);
+                      }
+                      Data_to_ESPslave('D', func);
+                      delay(10);
+
+                    } else if (digitalRead(buttonPin) == 0) {
+                      PETCH = false;
+                      if (mode == 0) {
+                        RAMP_DOWN[0] = BUFF;
+                        EEPROM.write(address_RAMP_DOWN0, RAMP_DOWN[0]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 1) {
+
+                        RAMP_DOWN[1] = BUFF;
+                        EEPROM.write(address_RAMP_DOWN1, RAMP_DOWN[1]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 2) {
+
+                        RAMP_DOWN[2] = BUFF;
+                        EEPROM.write(address_RAMP_DOWN2, RAMP_DOWN[2]);
+                        EEPROM.commit();
+                      }
+                      selectingMode1 = false;
+                      selectingMode = false;
+                    }
+                  }
+
+                  if (millis() - previousMillis > 5000) {
+                    selectingMode1 = false;
+                    selectingMode = false;
+                  }
+                }
+              }
+              ////----------------------------------------------------------------------------------//
+              if (mode1 == 2) {
+                unsigned long previousMillis = millis();
+                int previousValue = -1;
+                int value_X;
+                tft.fillScreen(TFT_BLACK);
+                while (selectingMode1 == true) {
+                  int mappedValue = map(Rotary, 0, 200, 0, 99);
+                  value_X = Rotary;
+                  Rotary = constrain(Rotary, -100, 100);
+                  Serial.println("Setting Limite_Speed");
+                  if (value_X > 99) {
+                    value_X = 99;
+                  }
+                  if (value_X != previousValue) {
+                    if (mode == 0) {
+                      PRE_SPEED_LIM[0] = SPEED_LIM[0];
+                      BUFF = PRE_SPEED_LIM[0] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      LIM_SPEED(BUFF);
+                    }
+                    if (mode == 1) {
+                      PRE_SPEED_LIM[1] = SPEED_LIM[1];
+                      BUFF = PRE_SPEED_LIM[1] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      LIM_SPEED(BUFF);
+                    }
+                    if (mode == 2) {
+                      PRE_SPEED_LIM[2] = SPEED_LIM[2];
+                      BUFF = PRE_SPEED_LIM[2] + value_X;
+                      if (BUFF > 99) {
+                        BUFF = 99;
+                      }
+                      if (BUFF < 0) {
+                        BUFF = 0;
+                      }
+                      LIM_SPEED(BUFF);
+                    }
+
+                    previousValue = value_X;
+                    previousMillis = millis();
+                  }
+                  PETCH = true;
+                  unsigned long buttonPressStart = millis();
+                  while (digitalRead(buttonPin) == 1 && PETCH == true) {
+                    Serial.println("A");
+                    if (millis() - buttonPressStart >= 2000) {
+                      Serial.println("ทำงาน 1: ปุ่มถูกกดค้าง 3 วินาที");
+                      Enter = true;
+                      PETCH = false;
+                      if (mode == 0) {
+
+                        SPEED_LIM[0] = BUFF;
+                        EEPROM.write(address_SPEED_LIM0, SPEED_LIM[0]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 1) {
+
+                        SPEED_LIM[1] = BUFF;
+                        EEPROM.write(address_SPEED_LIM1, SPEED_LIM[1]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 2) {
+
+                        SPEED_LIM[2] = BUFF;
+                        EEPROM.write(address_SPEED_LIM2, SPEED_LIM[2]);
+                        EEPROM.commit();
+                      }
+                      selectingMode1 = false;
+                      selectingMode = false;
+                      cancle = true;
+                      db_drawSaving(tft);
+                      drawBitImage(position_X, position_Y, 46, 40,
+                                   image_data_Screenshot20250103021558, 2);
+                      delay(10);
+                      for (int i = 0; i <= 100; i++) {
+                        int fillWidth = map(i, 0, 100, 0, barLong);
+                        drawLoadingBar(position_X_bar, position_Y_bar, barLong,
+                                       barWidth, fillWidth);
+                        delay(10);
+                      }
+                      Data_to_ESPslave('D', func);
+                      delay(10);
+                    } else if (digitalRead(buttonPin) == 0) {
+                      PETCH = false;
+                      Serial.println("ทำงาน 2: ปุ่มถูกกดค้าง 3 วินาที");
+                      if (mode == 0) {
+
+                        SPEED_LIM[0] = BUFF;
+                        EEPROM.write(address_SPEED_LIM0, SPEED_LIM[0]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 1) {
+
+                        SPEED_LIM[1] = BUFF;
+                        EEPROM.write(address_SPEED_LIM1, SPEED_LIM[1]);
+                        EEPROM.commit();
+                      }
+                      if (mode == 2) {
+
+                        SPEED_LIM[2] = BUFF;
+                        EEPROM.write(address_SPEED_LIM2, SPEED_LIM[2]);
+                        EEPROM.commit();
+                      }
+                      selectingMode1 = false;
+                      selectingMode = false;
+                    }
+                  }
+
+                  if (millis() - previousMillis > 5000) {
+                    selectingMode1 = false;
+                    selectingMode = false;
+                  }
+                }
+              }
+              if (mode1 == 3) {
+                unsigned long previousMillis = millis();
+                int previousValue = -1;
+                int value_X;
+
+                tft.fillScreen(TFT_BLACK);
+                tft.setTextColor(ILI9341_WHITE, BLACK);
+                tft.setTextDatum(MC_DATUM);
+                tft.drawString("SELECT DASH STYLE", 240, 50, 4);
+
+                // Draw static boxes
+                // Box 1: Classic
+                tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208); // Subtle grey
+                tft.drawString("CLASSIC", 130, 160, 2);
+
+                // Box 2: F1 Style
+                tft.drawRoundRect(260, 100, 180, 120, 10,
+                                  0x4208); // Subtle grey
+                tft.drawString("F1 STYLE", 350, 160, 2);
+
+                while (selectingMode1 == true) {
+                  // Toggle between 0 and 1 using Rotary
+                  value_X = abs(Rotary) % 2;
+
+                  if (value_X != previousValue) {
+                    if (value_X == 0) {
+                      // Highlight Classic
+                      tft.drawRoundRect(40, 100, 180, 120, 10, CYAN);
+                      tft.drawRoundRect(41, 101, 178, 118, 9,
+                                        CYAN); // Thicker border
+
+                      // Un-highlight F1
+                      tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
+                      tft.drawRoundRect(261, 101, 178, 118, 9,
+                                        BLACK); // Clear thick border
+                    } else {
+                      // Highlight F1
+                      tft.drawRoundRect(260, 100, 180, 120, 10, CYAN);
+                      tft.drawRoundRect(261, 101, 178, 118, 9,
+                                        CYAN); // Thicker border
+
+                      // Un-highlight Classic
+                      tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
+                      tft.drawRoundRect(41, 101, 178, 118, 9,
+                                        BLACK); // Clear thick border
+                    }
+                    previousValue = value_X;
+                    previousMillis = millis();
+                  }
+
+                  PETCH = true;
+                  unsigned long buttonPressStart = millis();
+                  while (digitalRead(buttonPin) == 1 && PETCH == true) {
+                    if (millis() - buttonPressStart >= 2000) {
+                      dashStyle = value_X;
+                      selectingMode1 = false;
+                      selectingMode = false;
+                      cancle = true;
+
+                      tft.fillScreen(BLACK);
+                      if (dashStyle == 1) {
+                        drawStaticUI();
+                      } else {
+                        db_init(tft);
+                      }
+
+                      PETCH = false;
+                    } else if (digitalRead(buttonPin) == 0) {
+                      PETCH = false;
+                      dashStyle = value_X;
+                      selectingMode1 = false;
+                      selectingMode = false;
+
+                      tft.fillScreen(BLACK);
+                      if (dashStyle == 1) {
+                        drawStaticUI();
+                      } else {
+                        db_init(tft);
+                      }
+                    }
+                  }
+
+                  if (millis() - previousMillis > 5000) {
+                    selectingMode1 = false;
+                    selectingMode = false;
+                  }
+                }
+              }
+              ////----------------------------------------------------------------------------------//
+            }
+            tft.fillScreen(DB_BG);
+          }
+          previousMode1 = -1;
+          mode1 = 0;
+          Rotary = 0;
+
+        } //------------
+
+        currentValue = Rotary;
+        if (currentValue != previousValue) {
+          previousValue = currentValue;
+          previousMillis = millis();
+        }
+        if (millis() - previousMillis > 5000) {
+          sendCommandToSlave('C');
+          cancle = true;
+        }
+      } //------------mode 1
+      db_drawChrome(tft); // ✅ dark chrome after param edit
+      tft.setTextDatum(TL_DATUM);
+      Pre_Rotary = Rotary;
+      Petch = false;
+
+    } ///- ------------ mode
+
+  } else {
+    if (digitalRead(buttonPin) == 1) {
+      Petch = false;
+    } else {
+      Petch = true;
     }
+  }
 }
 
 void erasePreviousSprite(int x, int y) {
-    sprite.fillSprite(TFT_RED);  
-    sprite.pushSprite(x - sprite.width() / 2, y - sprite.height() / 2);  
+  sprite.fillSprite(TFT_RED);
+  sprite.pushSprite(x - sprite.width() / 2, y - sprite.height() / 2);
 }
 
 uint16_t speedColor(int spd, int lim) {
-  if (lim <= 0) return DB_CYAN;
+  if (lim <= 0)
+    return DB_CYAN;
   int pct = spd * 100 / lim;
-  if (pct >= 85) return DB_RED;
-  if (pct >= 60) return DB_ORANGE;
+  if (pct >= 85)
+    return DB_RED;
+  if (pct >= 60)
+    return DB_ORANGE;
   return DB_CYAN;
 }
 
 // 💡 ปรับสเกลพิกัดวาดตัวหนังสือลงกึ่งกลาง Sprite 170x160 ตัวใหม่ เพื่อป้องกันขอบตัวอักษรแหว่ง
-void drawRotatedText(String hundreds, String tens, String units, int x, int y, float angle, uint16_t col) {
+void drawRotatedText(String hundreds, String tens, String units, int x, int y,
+                     float angle, uint16_t col) {
   sprite.fillSprite(DB_BG);
-  sprite.setTextSize(4); // ลดจาก 9 เหลือ 4 จะพอดีกับกรอบ 170x160 และตัวฟอนต์ FreeMono18pt
+  sprite.setTextSize(
+      4); // ลดจาก 9 เหลือ 4 จะพอดีกับกรอบ 170x160 และตัวฟอนต์ FreeMono18pt
   sprite.setTextColor(col, DB_BG);
   sprite.setTextDatum(MC_DATUM); // บังคับอ้างอิงกึ่งกลางอักษรเป๊ะ ๆ
-  
-  // จัดตัวเลขหลักสิบและหลักหน่วยขนาบข้างกึ่งกลาง Sprite (X=85, Y=80) 
+
+  // จัดตัวเลขหลักสิบและหลักหน่วยขนาบข้างกึ่งกลาง Sprite (X=85, Y=80)
   sprite.drawString(tens, 45, 80);
   sprite.drawString(units, 125, 80);
-  sprite.pushRotated(angle, DB_BG);  // DB_BG ทำหน้าที่คอยรีเฟรชถมทับสีรอบนอกกันขุยขยะค้าง
+  sprite.pushRotated(angle, DB_BG); // DB_BG ทำหน้าที่คอยรีเฟรชถมทับสีรอบนอกกันขุยขยะค้าง
 }
 
-void drawRotatedText_TEN(String hundreds, String tens, String units, int x, int y, float angle, uint16_t col) {
+void drawRotatedText_TEN(String hundreds, String tens, String units, int x,
+                         int y, float angle, uint16_t col) {
   sprite.fillSprite(DB_BG);
   sprite.setTextSize(4);
   sprite.setTextColor(col, DB_BG);
   sprite.setTextDatum(MC_DATUM);
-  
+
   sprite.drawString(tens, 50, 80);
   sprite.drawString(units, 120, 80);
   sprite.pushRotated(angle, DB_BG);
 }
 
-void drawRotatedText_UNIT(String units, int x, int y, float angle, uint16_t col) {
+void drawRotatedText_UNIT(String units, int x, int y, float angle,
+                          uint16_t col) {
   sprite.fillSprite(DB_BG);
   sprite.setTextSize(4);
   sprite.setTextColor(col, DB_BG);
   sprite.setTextDatum(MC_DATUM);
-  
+
   sprite.drawString(units, 85, 80); // ตัวเลขตัวเดียวให้อยู่กึ่งกลาง Sprite พอดีเป๊ะ
   sprite.pushRotated(angle, DB_BG);
 }
 
-void Data_to_ESPslave (char command ,int x) {
-  Wire.beginTransmission(Slave_Address); 
-  switch (x){ 
+void Data_to_ESPslave(char command, int x) {
+  Wire.beginTransmission(Slave_Address);
+  switch (x) {
   case 0:
     Wire.write(command);
     Wire.write(x);
-    Wire.write(RAMP_UP[x]); 
-    Wire.write(RAMP_DOWN[x]); 
-    Wire.write(SPEED_LIM[x]); 
-    break ;
+    Wire.write(RAMP_UP[x]);
+    Wire.write(RAMP_DOWN[x]);
+    Wire.write(SPEED_LIM[x]);
+    break;
   case 1:
     Wire.write(command);
     Wire.write(x);
-    Wire.write(RAMP_UP[x]); 
-    Wire.write(RAMP_DOWN[x]); 
-    Wire.write(SPEED_LIM[x]); 
-    break ;
+    Wire.write(RAMP_UP[x]);
+    Wire.write(RAMP_DOWN[x]);
+    Wire.write(SPEED_LIM[x]);
+    break;
   case 2:
     Wire.write(command);
     Wire.write(x);
-    Wire.write(RAMP_UP[x]); 
-    Wire.write(RAMP_DOWN[x]); 
-    Wire.write(SPEED_LIM[x]); 
-    break ;
+    Wire.write(RAMP_UP[x]);
+    Wire.write(RAMP_DOWN[x]);
+    Wire.write(SPEED_LIM[x]);
+    break;
   }
   if (Wire.endTransmission() == 0) {
-        Serial.println("Data sent successfully");
-    } else {
-        Serial.println("Failed to send data");
-    }
+    Serial.println("Data sent successfully");
+  } else {
+    Serial.println("Failed to send data");
+  }
   Serial.println("Parameters sent to Slave:");
-  Serial.print("Command: "); Serial.println(command);
-  Serial.print("Mode: "); Serial.println(x);
-  Serial.print("Up: "); Serial.println(RAMP_UP[x]);
-  Serial.print("Down: "); Serial.println(RAMP_UP[x]);
-  Serial.print("Speed: "); Serial.println(RAMP_UP[x]);
-  delay(50); 
+  Serial.print("Command: ");
+  Serial.println(command);
+  Serial.print("Mode: ");
+  Serial.println(x);
+  Serial.print("Up: ");
+  Serial.println(RAMP_UP[x]);
+  Serial.print("Down: ");
+  Serial.println(RAMP_UP[x]);
+  Serial.print("Speed: ");
+  Serial.println(RAMP_UP[x]);
+  delay(50);
 }
 
-void Read_from_ESPslave () {
-  Wire.requestFrom(0x08, 2); 
+void Read_from_ESPslave() {
+  Wire.requestFrom(0x08, 2);
   if (Wire.available() >= 2) {
-     receivedValue[0] = Wire.read(); 
-     receivedValue[1] = Wire.read(); 
+    receivedValue[0] = Wire.read();
+    receivedValue[1] = Wire.read();
 
     Serial.print("Received Value 1: ");
     Serial.println(receivedValue[0]);
     Serial.print("Received Value 2: ");
     Serial.println(receivedValue[1]);
-  }else {
-        Serial.println("No data available");
-    }
+  } else {
+    Serial.println("No data available");
+  }
 }
-void Set_Parameter() {
-    db_drawModeSelect(tft, mode);  
-}
-void displayMode() {
-    db_drawModeSelect(tft, mode);  
-}
+void Set_Parameter() { db_drawModeSelect(tft, mode); }
+void displayMode() { db_drawModeSelect(tft, mode); }
 
 void SET_RAMP_UP(int value_speedup) {
   static int prevalue_speedup = -1;
   if (value_speedup != prevalue_speedup) {
-    db_drawSetParam(tft, 0, value_speedup, mode);  
+    db_drawSetParam(tft, 0, value_speedup, mode);
     prevalue_speedup = value_speedup;
   }
 }
@@ -1089,7 +1060,7 @@ void SET_RAMP_UP(int value_speedup) {
 void SET_RAMP_DOWN(int value_speeddown) {
   static int prevalue_speeddown = -1;
   if (value_speeddown != prevalue_speeddown) {
-    db_drawSetParam(tft, 1, value_speeddown, mode);  
+    db_drawSetParam(tft, 1, value_speeddown, mode);
     prevalue_speeddown = value_speeddown;
   }
 }
@@ -1097,64 +1068,65 @@ void SET_RAMP_DOWN(int value_speeddown) {
 void LIM_SPEED(int value_limite) {
   static int prevalue_value_limite = -1;
   if (value_limite != prevalue_value_limite) {
-    db_drawSetParam(tft, 2, value_limite, mode);   
+    db_drawSetParam(tft, 2, value_limite, mode);
     prevalue_value_limite = value_limite;
   }
 }
 
-void EEPROM_SET(){
-    EEPROM.begin(20);  
-    RAMP_UP[0] = EEPROM.read(address_RAMP_UP0);
-    RAMP_UP[1] = EEPROM.read(address_RAMP_UP1);
-    RAMP_UP[2] = EEPROM.read(address_RAMP_UP2);
-    RAMP_DOWN[0] = EEPROM.read(address_RAMP_DOWN0);
-    RAMP_DOWN[1] = EEPROM.read(address_RAMP_DOWN1);
-    RAMP_DOWN[2] = EEPROM.read(address_RAMP_DOWN2);
-    SPEED_LIM[0] = EEPROM.read(address_SPEED_LIM0);
-    SPEED_LIM[1] = EEPROM.read(address_SPEED_LIM1);
-    SPEED_LIM[2] = EEPROM.read(address_SPEED_LIM2);
+void EEPROM_SET() {
+  EEPROM.begin(20);
+  RAMP_UP[0] = EEPROM.read(address_RAMP_UP0);
+  RAMP_UP[1] = EEPROM.read(address_RAMP_UP1);
+  RAMP_UP[2] = EEPROM.read(address_RAMP_UP2);
+  RAMP_DOWN[0] = EEPROM.read(address_RAMP_DOWN0);
+  RAMP_DOWN[1] = EEPROM.read(address_RAMP_DOWN1);
+  RAMP_DOWN[2] = EEPROM.read(address_RAMP_DOWN2);
+  SPEED_LIM[0] = EEPROM.read(address_SPEED_LIM0);
+  SPEED_LIM[1] = EEPROM.read(address_SPEED_LIM1);
+  SPEED_LIM[2] = EEPROM.read(address_SPEED_LIM2);
 }
 void HELLO() {
-    db_drawHello(tft);  
-    for(int i = 255 ; i > 0 ; i-- ){
-      dacWrite(dacPin, i);
-      delay(7);
-    }
-    for(int i = 0 ; i < 255 ; i++ ){
-      dacWrite(dacPin, i);
-      delay(3);
-    }
-    for(int i = 255 ; i > 0 ; i-- ){
-      dacWrite(dacPin, i);
-      delay(1);
-    }
-    for(int i = 0 ; i < 255 ; i++ ){
-      dacWrite(dacPin, i);
-      delay(1);
-    }
-    db_drawChrome(tft);  
+  db_drawHello(tft);
+  for (int i = 255; i > 0; i--) {
+    dacWrite(dacPin, i);
+    delay(7);
+  }
+  for (int i = 0; i < 255; i++) {
+    dacWrite(dacPin, i);
+    delay(3);
+  }
+  for (int i = 255; i > 0; i--) {
+    dacWrite(dacPin, i);
+    delay(1);
+  }
+  for (int i = 0; i < 255; i++) {
+    dacWrite(dacPin, i);
+    delay(1);
+  }
+  db_drawChrome(tft);
 }
-void DOT(){
-   tft.fillCircle(250, 270, 6, TFT_GREY);
-   tft.fillCircle(230, 270, 6, TFT_GREY);
-   tft.fillCircle(270, 270, 6, TFT_GREY);
+void DOT() {
+  tft.fillCircle(250, 270, 6, TFT_GREY);
+  tft.fillCircle(230, 270, 6, TFT_GREY);
+  tft.fillCircle(270, 270, 6, TFT_GREY);
 }
-int ringMeter(int value, int vmin, int vmax, int x, int y, int r, const char *units, byte scheme)
-{
-  x += r; y += r;   
+int ringMeter(int value, int vmin, int vmax, int x, int y, int r,
+              const char *units, byte scheme) {
+  x += r;
+  y += r;
 
-  int w = r / 3;    
-  
-  int angle = 150;  
+  int w = r / 3;
 
-  int v = map(value, vmin, vmax, -angle, angle); 
+  int angle = 150;
 
-  byte seg = 5; 
-  byte inc = 10; 
+  int v = map(value, vmin, vmax, -angle, angle);
+
+  byte seg = 5;
+  byte inc = 10;
 
   int colour = TFT_BLUE;
- 
-  for (int i = -angle+inc/2; i < angle-inc/2; i += inc) {
+
+  for (int i = -angle + inc / 2; i < angle - inc / 2; i += inc) {
     float sx = cos((i - 90) * 0.0174532925);
     float sy = sin((i - 90) * 0.0174532925);
     uint16_t x0 = sx * (r - w) + x;
@@ -1169,55 +1141,70 @@ int ringMeter(int value, int vmin, int vmax, int x, int y, int r, const char *un
     int x3 = sx2 * r + x;
     int y3 = sy2 * r + y;
 
-    if (i < v) { 
+    if (i < v) {
       switch (scheme) {
-        case 0: colour = TFT_RED; break; 
-        case 1: colour = TFT_GREEN; break; 
-        case 2: colour = TFT_BLUE; break; 
-        case 3: colour = rainbow(map(i, -angle, angle, 0, 127)); break; 
-        case 4: colour = rainbow(map(i, -angle, angle, 70, 127)); break; 
-        case 5: colour = rainbow(map(i, -angle, angle, 127, 63)); break; 
-        default: colour = TFT_BLUE; break; 
+      case 0:
+        colour = TFT_RED;
+        break;
+      case 1:
+        colour = TFT_GREEN;
+        break;
+      case 2:
+        colour = TFT_BLUE;
+        break;
+      case 3:
+        colour = rainbow(map(i, -angle, angle, 0, 127));
+        break;
+      case 4:
+        colour = rainbow(map(i, -angle, angle, 70, 127));
+        break;
+      case 5:
+        colour = rainbow(map(i, -angle, angle, 127, 63));
+        break;
+      default:
+        colour = TFT_BLUE;
+        break;
       }
       tft.fillTriangle(x0, y0, x1, y1, x2, y2, colour);
       tft.fillTriangle(x1, y1, x2, y2, x3, y3, colour);
-    }
-    else 
-    {
+    } else {
       tft.fillTriangle(x0, y0, x1, y1, x2, y2, TFT_GREY);
       tft.fillTriangle(x1, y1, x2, y2, x3, y3, TFT_GREY);
     }
   }
   char buf[10];
-  byte len = 3; if (value > 999) len = 5;
+  byte len = 3;
+  if (value > 999)
+    len = 5;
   dtostrf(value, len, 0, buf);
-  buf[len] = ' '; buf[len+1] = 0; 
+  buf[len] = ' ';
+  buf[len + 1] = 0;
   tft.setTextSize(1);
 
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextColor(colour, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   if (r > 84) {
-    tft.setTextPadding(55*3); 
-    tft.drawString(buf, x, y, 8); 
-  }
-  else {
-    tft.setTextPadding(3 * 14); 
-    tft.drawString(buf, x, y, 4); 
+    tft.setTextPadding(55 * 3);
+    tft.drawString(buf, x, y, 8);
+  } else {
+    tft.setTextPadding(3 * 14);
+    tft.drawString(buf, x, y, 4);
   }
   tft.setTextSize(1);
   tft.setTextPadding(0);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  if (r > 84) tft.drawString(units, x, y + 100, 4); 
-  else tft.drawString(units, x, y + 15, 2); 
+  if (r > 84)
+    tft.drawString(units, x, y + 100, 4);
+  else
+    tft.drawString(units, x, y + 15, 2);
 
   return x + r;
 }
-unsigned int rainbow(byte value)
-{
-  byte red = 0; 
+unsigned int rainbow(byte value) {
+  byte red = 0;
   byte green = 0;
-  byte blue = 0; 
+  byte blue = 0;
 
   byte quadrant = value / 32;
 
@@ -1244,25 +1231,24 @@ unsigned int rainbow(byte value)
   return (red << 11) + (green << 5) + blue;
 }
 
-float sineWave(int phase) {
-  return sin(phase * 0.0174532925);
-}
-void drawAlert(int x, int y , int side, bool draw)
-{
+float sineWave(int phase) { return sin(phase * 0.0174532925); }
+void drawAlert(int x, int y, int side, bool draw) {
   if (draw && !range_error) {
-    drawIcon(alert, x - alertWidth/2, y - alertHeight/2, alertWidth, alertHeight);
+    drawIcon(alert, x - alertWidth / 2, y - alertHeight / 2, alertWidth,
+             alertHeight);
     range_error = 1;
-  }
-  else if (!draw) {
-    tft.fillRect(x - alertWidth/2, y - alertHeight/2, alertWidth, alertHeight, TFT_BLACK);
+  } else if (!draw) {
+    tft.fillRect(x - alertWidth / 2, y - alertHeight / 2, alertWidth,
+                 alertHeight, TFT_BLACK);
     range_error = 0;
   }
 }
 #define BUFF_SIZE 64
 
-void drawIcon(const unsigned short* icon, int16_t x, int16_t y, int8_t width, int8_t height) {
+void drawIcon(const unsigned short *icon, int16_t x, int16_t y, int8_t width,
+              int8_t height) {
 
-  uint16_t  pix_buffer[BUFF_SIZE];   
+  uint16_t pix_buffer[BUFF_SIZE];
 
   tft.startWrite();
   tft.setAddrWindow(x, y, width, height);
@@ -1279,7 +1265,8 @@ void drawIcon(const unsigned short* icon, int16_t x, int16_t y, int8_t width, in
   uint16_t np = ((uint16_t)height * width) % BUFF_SIZE;
 
   if (np) {
-    for (int i = 0; i < np; i++) pix_buffer[i] = pgm_read_word(&icon[nb * BUFF_SIZE + i]);
+    for (int i = 0; i < np; i++)
+      pix_buffer[i] = pgm_read_word(&icon[nb * BUFF_SIZE + i]);
     tft.pushColors(pix_buffer, np);
   }
 
@@ -1297,35 +1284,36 @@ void Main_task() {
     lastUpdateTime = currentMillis;
   }
 
-  if (Speed > 99) Speed = 99;
+  if (Speed > 99)
+    Speed = 99;
   DAC = map(Speed, 0, 116, 0, 255);
   dacWrite(dacPin, DAC);
 
   bool gotPacket = false;
   if (dmpReady && mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
     gotPacket = true;
-    #ifdef OUTPUT_READABLE_YAWPITCHROLL
-      mpu.dmpGetQuaternion(&q, fifoBuffer);
-      mpu.dmpGetGravity(&gravity, &q);
-      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    #endif
+#ifdef OUTPUT_READABLE_YAWPITCHROLL
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+#endif
   }
 
   float new_angle = ypr[1] * 180.0f / M_PI;
   // ── 💡 ระบบเอียงแบบสมูท (Smooth Rotation) สลับซ้าย-ขวา ──
   float target_angle = ypr[1] * -180.0f / M_PI; // สลับซ้ายขวาด้วยการใส่ลบ (-)
-  
+
   // สร้าง Deadzone ตอนตั้งตรง (ถ้าเอียงนิดเดียวไม่ถึง 5 องศา ให้ถือว่าตรงเป๊ะ)
   if (target_angle > -5 && target_angle < 5) {
     target_angle = 0;
   }
   // จำกัดการเอียงสูงสุดที่ 45 องศา
   target_angle = constrain(target_angle, -45.0f, 45.0f);
-  
+
   // สมูทตัวเลข: ค่อยๆ วิ่งเข้าหาเป้าหมาย (0.15 = ความหนืด/ความสมูท)
   angle1 += (target_angle - angle1) * 0.15f;
 
-  Serial.print(gotPacket ? "[PKT] " : "[---] ");   
+  Serial.print(gotPacket ? "[PKT] " : "[---] ");
   Serial.print("dmpReady:");
   Serial.print(dmpReady ? "Y" : "N");
   Serial.print("  YAW:");
@@ -1341,17 +1329,16 @@ void Main_task() {
   Serial.print("  SPD:");
   Serial.println(Speed);
 
-
   if (dashStyle == 0) {
-    bool fullRedraw = db_update(tft,
-              Speed,
-              RAMP_UP[mode], RAMP_DOWN[mode], SPEED_LIM[mode],
-              mode,
-              ypr);
+    bool fullRedraw = db_update(tft, Speed, RAMP_UP[mode], RAMP_DOWN[mode],
+                                SPEED_LIM[mode], mode, ypr);
 
-    static int   prevSpriteSpeed = -1;
-    static float prevAngle1      = -999.0f;
-    if (fullRedraw) { prevSpriteSpeed = -1; prevAngle1 = -999.0f; }  
+    static int prevSpriteSpeed = -1;
+    static float prevAngle1 = -999.0f;
+    if (fullRedraw) {
+      prevSpriteSpeed = -1;
+      prevAngle1 = -999.0f;
+    }
 
     if (Speed != prevSpriteSpeed || abs(angle1 - prevAngle1) >= 1.0f) {
       // 💡 ขยับแกนวาด Sprite ขึ้นไปที่พิกัด 90 เพื่อดันตัวเลข 0 ขึ้นไปอีก
@@ -1362,19 +1349,21 @@ void Main_task() {
       uint16_t col = speedColor(Speed, SPEED_LIM[mode]);
 
       hundreds = Speed / 100;
-      tens     = (Speed / 10) % 10;
-      units    = Speed % 10;
+      tens = (Speed / 10) % 10;
+      units = Speed % 10;
 
       if (Speed <= 9) {
         drawRotatedText_UNIT(String(units), 0, 0, angle1, col);
       } else if (Speed < 20) {
-        drawRotatedText_TEN(String(hundreds), String(tens), String(units), 0, 0, angle1, col);
+        drawRotatedText_TEN(String(hundreds), String(tens), String(units), 0, 0,
+                            angle1, col);
       } else {
-        drawRotatedText(String(hundreds), String(tens), String(units), 0, 0, angle1, col);
+        drawRotatedText(String(hundreds), String(tens), String(units), 0, 0,
+                        angle1, col);
       }
 
       prevSpriteSpeed = Speed;
-      prevAngle1      = angle1;
+      prevAngle1 = angle1;
     }
   } else {
     // --- F1 Dashboard Update ---
@@ -1382,163 +1371,179 @@ void Main_task() {
     // Simulate RPM based on speed
     simRPM = map(Speed, 0, 99, 5000, 12000);
     simGear = (Speed / 15) + 1;
-    if (simGear > 7) simGear = 7;
-    
+    if (simGear > 7)
+      simGear = 7;
+
     // Simulate other fields
-    simGapAhead -= 0.001; if (simGapAhead < 0.1) simGapAhead = 2.5;
-    simGapBehind += 0.002; if (simGapBehind > 5.0) simGapBehind = 1.0;
-    
+    simGapAhead -= 0.001;
+    if (simGapAhead < 0.1)
+      simGapAhead = 2.5;
+    simGapBehind += 0.002;
+    if (simGapBehind > 5.0)
+      simGapBehind = 1.0;
+
     if (millis() % 5000 < 50) {
       simFuel--;
-      if (simFuel < 0) simFuel = 100;
+      if (simFuel < 0)
+        simFuel = 100;
     }
-    
+
     updateDynamicData();
   }
 
   Pre_Speed = Speed;
 }
 
-
 // Handles when Rotary < -1
 void handleRotaryBelowThreshold() {
-    bool Enter = true;
-    unsigned long Time = millis();
-    previousMode = -1;
-    Rotary = 0;
-    db_drawModeSelect(tft, mode);  
-    sendCommandToSlave('S');
-    while (Enter) {
-        if (Rotary < -20) {
-            Rotary = 0;
-        }
-
-        if (Rotary <= -2 && Rotary >= -8) {
-            mode = 0;
-        } else if (Rotary <= -9 && Rotary >= -14) {
-            mode = 1;
-        } else if (Rotary <= -14 && Rotary >= -20) {
-            mode = 2;
-        }
-
-        if (mode != previousMode) {
-            displayMode();
-            previousMode = mode;
-            Time = millis();
-        }
-
-        if (digitalRead(buttonPin) == HIGH) {
-            func = mode;
-            Enter = false;
-            while (digitalRead(buttonPin) == HIGH);
-            db_drawSaving(tft);  
-            drawBitImage(position_X, position_Y, 46, 40, image_data_Screenshot20250103021558,2);
-            for (int i = 0; i <= 100; i++) {
-            int fillWidth = map(i, 0, 100, 0, barLong);
-            drawLoadingBar(position_X_bar, position_Y_bar, barLong, barWidth, fillWidth);
-              delay(10); 
-            }
-            
-            Data_to_ESPslave('D',func);
-            db_drawChrome(tft);
-            db_invalidate();  
-            Time = millis();
-            Pre_Speed = -1 ;
-            
-        }
-
-        if (millis() - Time > 3000) {
-            Enter = false;
-            sendCommandToSlave('C')  ; 
-            db_drawChrome(tft);
-            db_invalidate();  
-            Pre_Speed = -1 ;
-        }
+  bool Enter = true;
+  unsigned long Time = millis();
+  previousMode = -1;
+  Rotary = 0;
+  db_drawModeSelect(tft, mode);
+  sendCommandToSlave('S');
+  while (Enter) {
+    if (Rotary < -20) {
+      Rotary = 0;
     }
+
+    if (Rotary <= -2 && Rotary >= -8) {
+      mode = 0;
+    } else if (Rotary <= -9 && Rotary >= -14) {
+      mode = 1;
+    } else if (Rotary <= -14 && Rotary >= -20) {
+      mode = 2;
+    }
+
+    if (mode != previousMode) {
+      displayMode();
+      previousMode = mode;
+      Time = millis();
+    }
+
+    if (digitalRead(buttonPin) == HIGH) {
+      func = mode;
+      Enter = false;
+      while (digitalRead(buttonPin) == HIGH)
+        ;
+      db_drawSaving(tft);
+      drawBitImage(position_X, position_Y, 46, 40,
+                   image_data_Screenshot20250103021558, 2);
+      for (int i = 0; i <= 100; i++) {
+        int fillWidth = map(i, 0, 100, 0, barLong);
+        drawLoadingBar(position_X_bar, position_Y_bar, barLong, barWidth,
+                       fillWidth);
+        delay(10);
+      }
+
+      Data_to_ESPslave('D', func);
+      if (dashStyle == 1) {
+        drawStaticUI();
+      } else {
+        db_drawChrome(tft);
+      }
+      db_invalidate();
+      Time = millis();
+      Pre_Speed = -1;
+    }
+
+    if (millis() - Time > 3000) {
+      Enter = false;
+      sendCommandToSlave('C');
+      if (dashStyle == 1) {
+        drawStaticUI();
+      } else {
+        db_drawChrome(tft);
+      }
+      db_invalidate();
+      Pre_Speed = -1;
+    }
+  }
 }
 
 // Handles when Rotary > 1
 void handleRotaryAboveThreshold() {
-    bool Enter = true;
-    unsigned long Time = millis();
-    int previousDashStyle = -1;
-    Rotary = 0;
-    
-    // Draw initial selection screen
-    tft.fillScreen(0x0000); // Pure black
-    tft.setTextColor(0xFFFF, 0x0000); // White on Black
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString("SELECT DASH STYLE", 240, 50, 4);
-    
-    // Draw boxes
-    tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
-    tft.drawString("CLASSIC", 130, 160, 2);
-    
-    tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
-    tft.drawString("F1 STYLE", 350, 160, 2);
+  bool Enter = true;
+  unsigned long Time = millis();
+  int previousDashStyle = -1;
+  Rotary = 0;
 
-    while (Enter) {
-        if (Rotary > 20) {
-            Rotary = 0;
-        }
+  // Draw initial selection screen
+  tft.fillScreen(0x0000);           // Pure black
+  tft.setTextColor(0xFFFF, 0x0000); // White on Black
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("SELECT DASH STYLE", 240, 50, 4);
 
-        if (Rotary >= 2 && Rotary <= 10) {
-            dashStyle = 0; // Classic
-        } else if (Rotary >= 11 && Rotary <= 20) {
-            dashStyle = 1; // F1
-        }
+  // Draw boxes
+  tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
+  tft.drawString("CLASSIC", 130, 160, 2);
 
-        if (dashStyle != previousDashStyle) {
-            if (dashStyle == 0) {
-                // Highlight Classic
-                tft.drawRoundRect(40, 100, 180, 120, 10, 0x07FF); // Cyan
-                tft.drawRoundRect(41, 101, 178, 118, 9, 0x07FF);
-                
-                tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
-                tft.drawRoundRect(261, 101, 178, 118, 9, 0x0000);
-            } else {
-                // Highlight F1
-                tft.drawRoundRect(260, 100, 180, 120, 10, 0x07FF); // Cyan
-                tft.drawRoundRect(261, 101, 178, 118, 9, 0x07FF);
-                
-                tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
-                tft.drawRoundRect(41, 101, 178, 118, 9, 0x0000);
-            }
-            previousDashStyle = dashStyle;
-            Time = millis();
-        }
+  tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
+  tft.drawString("F1 STYLE", 350, 160, 2);
 
-        // Confirm with button press
-        if (digitalRead(buttonPin) == HIGH) {
-            Enter = false;
-            tft.fillScreen(0x0000);
-            if (dashStyle == 1) {
-                drawStaticUI();
-            } else {
-                db_init(tft);
-            }
-            while(digitalRead(buttonPin) == HIGH); // Wait for release
-        }
-
-        if (millis() - Time > 3000) { // 3 seconds timeout
-            Enter = false;
-            tft.fillScreen(0x0000);
-            if (dashStyle == 1) {
-                drawStaticUI();
-            } else {
-                db_init(tft);
-            }
-        }
-        delay(10);
+  while (Enter) {
+    if (Rotary > 20) {
+      Rotary = 0;
     }
-    Rotary = 0;
+
+    if (Rotary >= 2 && Rotary <= 10) {
+      dashStyle = 0; // Classic
+    } else if (Rotary >= 11 && Rotary <= 20) {
+      dashStyle = 1; // F1
+    }
+
+    if (dashStyle != previousDashStyle) {
+      if (dashStyle == 0) {
+        // Highlight Classic
+        tft.drawRoundRect(40, 100, 180, 120, 10, 0x07FF); // Cyan
+        tft.drawRoundRect(41, 101, 178, 118, 9, 0x07FF);
+
+        tft.drawRoundRect(260, 100, 180, 120, 10, 0x4208);
+        tft.drawRoundRect(261, 101, 178, 118, 9, 0x0000);
+      } else {
+        // Highlight F1
+        tft.drawRoundRect(260, 100, 180, 120, 10, 0x07FF); // Cyan
+        tft.drawRoundRect(261, 101, 178, 118, 9, 0x07FF);
+
+        tft.drawRoundRect(40, 100, 180, 120, 10, 0x4208);
+        tft.drawRoundRect(41, 101, 178, 118, 9, 0x0000);
+      }
+      previousDashStyle = dashStyle;
+      Time = millis();
+    }
+
+    // Confirm with button press
+    if (digitalRead(buttonPin) == HIGH) {
+      Enter = false;
+      tft.fillScreen(0x0000);
+      if (dashStyle == 1) {
+        drawStaticUI();
+      } else {
+        db_init(tft);
+      }
+      while (digitalRead(buttonPin) == HIGH)
+        ; // Wait for release
+    }
+
+    if (millis() - Time > 3000) { // 3 seconds timeout
+      Enter = false;
+      tft.fillScreen(0x0000);
+      if (dashStyle == 1) {
+        drawStaticUI();
+      } else {
+        db_init(tft);
+      }
+    }
+    delay(10);
+  }
+  Rotary = 0;
 }
 
 void updateDisplay(int func) {
-    if (func >= 0 && func < 3) {
-        db_drawChrome(tft);
-        db_drawParams(tft, RAMP_UP[func], RAMP_DOWN[func], SPEED_LIM[func], func);
-    }
+  if (func >= 0 && func < 3) {
+    db_drawChrome(tft);
+    db_drawParams(tft, RAMP_UP[func], RAMP_DOWN[func], SPEED_LIM[func], func);
+  }
 }
 void sendCommandToSlave(char command) {
   Wire.beginTransmission(Slave_Address);
@@ -1548,21 +1553,21 @@ void sendCommandToSlave(char command) {
   Serial.println(command);
 }
 void requestSlaveReady() {
-  unsigned long startTime = millis(); 
-  unsigned long timeout = 3000; 
+  unsigned long startTime = millis();
+  unsigned long timeout = 3000;
   bool success = false;
 
-  while (millis() - startTime < timeout && !success) { 
-  
-    Wire.requestFrom(Slave_Address, 1); 
-      delay(1000) ;
-    if (Wire.available()) { 
-    
-      char response = Wire.read(); 
+  while (millis() - startTime < timeout && !success) {
+
+    Wire.requestFrom(Slave_Address, 1);
+    delay(1000);
+    if (Wire.available()) {
+
+      char response = Wire.read();
       Serial.println(response);
-      if (response == 'R') { 
+      if (response == 'R') {
         Serial.println("Slave is ready");
-        success = true; 
+        success = true;
       } else {
         Serial.println("Slave not ready");
       }
@@ -1571,19 +1576,20 @@ void requestSlaveReady() {
     }
 
     if (!success) {
-      delay(50); 
+      delay(50);
     }
   }
 
   if (!success) {
     Serial.println("Failed to communicate with Slave after 5 seconds.");
-    
+
   } else {
-   Serial.println("Proceeding to the next task...");
-   send_para = true ;
+    Serial.println("Proceeding to the next task...");
+    send_para = true;
   }
 }
-void drawBitImage(int x, int y, int width, int height, const uint16_t *imageData, int scale) {
+void drawBitImage(int x, int y, int width, int height,
+                  const uint16_t *imageData, int scale) {
   int byteIndex = 0;
   for (int row = 0; row < height; row++) {
     for (int col = 0; col < width; col++) {
@@ -1600,14 +1606,14 @@ void drawBitImage(int x, int y, int width, int height, const uint16_t *imageData
   }
 }
 void drawLoadingBar(int x, int y, int width, int height, int fillWidth) {
-  tft.fillRoundRect(x+2, y+2, fillWidth-4, height-4, 3, ILI9341_GREEN);  
-  tft.drawRoundRect(x, y, width, height, 5, BLACK);  
+  tft.fillRoundRect(x + 2, y + 2, fillWidth - 4, height - 4, 3, ILI9341_GREEN);
+  tft.drawRoundRect(x, y, width, height, 5, BLACK);
 }
 
-void get_speed (){
+void get_speed() {
   Wire.requestFrom(Slave_Address, 1);
-  if (Wire.available()) { 
-    Speed = Wire.read() ;
+  if (Wire.available()) {
+    Speed = Wire.read();
   }
 }
 
@@ -1616,11 +1622,34 @@ void drawBox(int x, int y, int w, int h) {
 }
 
 void drawStaticUI() {
-  tft.fillScreen(0x0000); // Explicit black
-  
+  uint16_t bgColor = 0x0000;
+  uint16_t panelColor = 0x1082;
+  uint16_t textColor = 0xFFFF;
+  uint16_t borderColor = 0x4208;
+
+  if (mode == 2) {        // Eco mode
+    bgColor = 0x064D;     // Light Green
+    panelColor = 0x054A;  // Darker Green
+    textColor = 0x0000;   // Black text
+    borderColor = 0x03E0; // Subtle green border
+  } else if (mode == 1) { // Sport mode
+    bgColor = 0x0000;
+    panelColor = 0x1082;
+    textColor = 0xFFFF;
+    borderColor = 0x4208;
+  } else { // Normal mode
+    bgColor = 0x0000;
+    panelColor = 0x1082;
+    textColor = 0xFFFF;
+    borderColor = 0x4208;
+  }
+
+  tft.fillScreen(bgColor);
+  previousSimGear = -1; // Force gear redraw on next update
+
   // Top Header / Rev Bar
-  tft.fillRect(0, 0, 480, 25, 0x2104); // Dark grey header
-  
+  tft.fillRect(0, 0, 480, 25, (mode == 2) ? 0x054A : 0x2104);
+
   // Draw Rev Bar Background Segments
   int revX = 100;
   int revY = 5;
@@ -1628,140 +1657,164 @@ void drawStaticUI() {
   int revH = 15;
   int revGap = 4;
   for (int i = 0; i < 15; i++) {
-    tft.drawRoundRect(revX + (i * (revW + revGap)), revY, revW, revH, 2, 0x4208);
+    tft.drawRoundRect(revX + (i * (revW + revGap)), revY, revW, revH, 2,
+                      borderColor);
   }
 
   // --- Top Left: Speed & RPM ---
   // Speed Box
-  tft.fillRoundRect(20, 35, 110, 60, 5, 0x1082);
-  tft.drawRoundRect(20, 35, 110, 60, 5, 0x4208);
-  tft.setTextColor(0xFFFF, 0x1082);
+  tft.fillRoundRect(20, 35, 110, 60, 5, panelColor);
+  tft.drawRoundRect(20, 35, 110, 60, 5, borderColor);
+  tft.setTextColor(textColor, panelColor);
   tft.setTextDatum(BC_DATUM);
   tft.drawString("SPD", 75, 90, 1);
 
   // RPM Box
-  tft.fillRoundRect(135, 35, 140, 60, 5, 0x1082);
-  tft.drawRoundRect(135, 35, 140, 60, 5, 0x4208);
+  tft.fillRoundRect(135, 35, 140, 60, 5, panelColor);
+  tft.drawRoundRect(135, 35, 140, 60, 5, borderColor);
   tft.drawString("RPM", 205, 90, 1);
 
   // --- Middle Left: Tyres ---
   // FL
+  tft.setTextColor(textColor, bgColor);
   tft.drawString("FLTyre", 40, 105, 1);
-  tft.fillRoundRect(20, 115, 35, 45, 5, 0x07E0); // Explicit Green
-  tft.setTextColor(0x0000, 0x07E0); // Black on Green
+  tft.fillRoundRect(20, 115, 35, 45, 5, 0x07E0); // Keep green for good tyres
+  tft.setTextColor(0x0000, 0x07E0);              // Black on Green
   tft.setTextDatum(MC_DATUM);
   tft.drawString("40", 37, 137, 2);
-  
-  tft.drawRoundRect(60, 115, 35, 45, 5, 0xFFFF);
-  tft.setTextColor(0xFFFF, 0x0000);
+
+  tft.drawRoundRect(60, 115, 35, 45, 5, textColor);
+  tft.setTextColor(textColor, bgColor);
   tft.drawString("10", 77, 137, 2);
 
   // FR
   tft.setTextDatum(BC_DATUM);
   tft.drawString("FRTyre", 130, 105, 1);
-  tft.drawRoundRect(110, 115, 35, 45, 5, 0xFFFF);
-  tft.setTextColor(0xFFFF, 0x0000);
+  tft.drawRoundRect(110, 115, 35, 45, 5, textColor);
+  tft.setTextColor(textColor, bgColor);
   tft.setTextDatum(MC_DATUM);
   tft.drawString("10", 127, 137, 2);
-  
+
   tft.fillRoundRect(150, 115, 35, 45, 5, 0x07E0);
   tft.setTextColor(0x0000, 0x07E0);
   tft.drawString("40", 167, 137, 2);
 
   // RL
-  tft.setTextColor(0xFFFF, 0x0000);
+  tft.setTextColor(textColor, bgColor);
   tft.setTextDatum(BC_DATUM);
   tft.drawString("RLTyre", 40, 175, 1);
   tft.fillRoundRect(20, 185, 35, 45, 5, 0x07E0);
   tft.setTextColor(0x0000, 0x07E0);
   tft.setTextDatum(MC_DATUM);
   tft.drawString("40", 37, 207, 2);
-  
-  tft.drawRoundRect(60, 185, 35, 45, 5, 0xFFFF);
-  tft.setTextColor(0xFFFF, 0x0000);
+
+  tft.drawRoundRect(60, 185, 35, 45, 5, textColor);
+  tft.setTextColor(textColor, bgColor);
   tft.drawString("10", 77, 207, 2);
 
   // RR
   tft.setTextDatum(BC_DATUM);
   tft.drawString("RRTyre", 130, 175, 1);
-  tft.drawRoundRect(110, 185, 35, 45, 5, 0xFFFF);
-  tft.setTextColor(0xFFFF, 0x0000);
+  tft.drawRoundRect(110, 185, 35, 45, 5, textColor);
+  tft.setTextColor(textColor, bgColor);
   tft.setTextDatum(MC_DATUM);
   tft.drawString("10", 127, 207, 2);
-  
+
   tft.fillRoundRect(150, 185, 35, 45, 5, 0x07E0);
   tft.setTextColor(0x0000, 0x07E0);
   tft.drawString("40", 167, 207, 2);
 
   // --- Bottom Left: Small Boxes ---
   // Time
-  tft.fillRoundRect(20, 240, 100, 35, 3, 0x1082);
-  tft.drawRoundRect(20, 240, 100, 35, 3, 0x4208);
-  tft.setTextColor(0xFFFF, 0x1082);
+  tft.fillRoundRect(20, 240, 100, 35, 3, panelColor);
+  tft.drawRoundRect(20, 240, 100, 35, 3, borderColor);
+  tft.setTextColor(textColor, panelColor);
   tft.setTextDatum(TC_DATUM);
   tft.drawString("Time", 70, 242, 1);
 
   // Pos
-  tft.fillRoundRect(125, 240, 40, 35, 3, 0x1082);
-  tft.drawRoundRect(125, 240, 40, 35, 3, 0x4208);
+  tft.fillRoundRect(125, 240, 40, 35, 3, panelColor);
+  tft.drawRoundRect(125, 240, 40, 35, 3, borderColor);
   tft.drawString("Pos", 145, 242, 1);
 
   // SC
-  tft.fillRoundRect(170, 240, 80, 35, 3, 0x1082);
-  tft.drawRoundRect(170, 240, 80, 35, 3, 0x4208);
+  tft.fillRoundRect(170, 240, 80, 35, 3, panelColor);
+  tft.drawRoundRect(170, 240, 80, 35, 3, borderColor);
   tft.drawString("SC Panel", 210, 242, 1);
 
   // Lap
-  tft.fillRoundRect(20, 280, 50, 35, 3, 0x1082);
-  tft.drawRoundRect(20, 280, 50, 35, 3, 0x4208);
+  tft.fillRoundRect(20, 280, 50, 35, 3, panelColor);
+  tft.drawRoundRect(20, 280, 50, 35, 3, borderColor);
   tft.drawString("Lap", 45, 282, 1);
 
   // Total Laps
-  tft.fillRoundRect(75, 280, 70, 35, 3, 0x1082);
-  tft.drawRoundRect(75, 280, 70, 35, 3, 0x4208);
+  tft.fillRoundRect(75, 280, 70, 35, 3, panelColor);
+  tft.drawRoundRect(75, 280, 70, 35, 3, borderColor);
   tft.drawString("Total Laps", 110, 282, 1);
 
   // SC Delta
-  tft.fillRoundRect(150, 280, 100, 35, 3, 0x1082);
-  tft.drawRoundRect(150, 280, 100, 35, 3, 0x4208);
+  tft.fillRoundRect(150, 280, 100, 35, 3, panelColor);
+  tft.drawRoundRect(150, 280, 100, 35, 3, borderColor);
   tft.drawString("SC Delta", 200, 282, 1);
 
   // --- Far Right: Vertical Stack ---
   int rx = 340;
   int rw = 120;
-  
+
   // Fuel
-  tft.fillRoundRect(rx, 35, rw, 40, 5, 0x1082);
-  tft.drawRoundRect(rx, 35, rw, 40, 5, 0x4208);
-  tft.setTextColor(0xFFFF, 0x1082);
+  tft.fillRoundRect(rx, 35, rw, 40, 5, panelColor);
+  tft.drawRoundRect(rx, 35, rw, 40, 5, borderColor);
+  tft.setTextColor(textColor, panelColor);
   tft.setTextDatum(TC_DATUM);
-  tft.drawString("Fuel", rx + rw/2, 37, 1);
+  tft.drawString("Fuel", rx + rw / 2, 37, 1);
 
   // Fuel Est
-  tft.fillRoundRect(rx, 80, rw, 40, 5, 0x1082);
-  tft.drawRoundRect(rx, 80, rw, 40, 5, 0x4208);
-  tft.drawString("Fuel Est Laps", rx + rw/2, 82, 1);
+  tft.fillRoundRect(rx, 80, rw, 40, 5, panelColor);
+  tft.drawRoundRect(rx, 80, rw, 40, 5, borderColor);
+  tft.drawString("Fuel Est Laps", rx + rw / 2, 82, 1);
 
   // Gap Ahead
-  tft.fillRoundRect(rx, 125, rw, 40, 5, 0x1082);
-  tft.drawRoundRect(rx, 125, rw, 40, 5, 0x4208);
-  tft.drawString("Gap Ahead", rx + rw/2, 127, 1);
+  tft.fillRoundRect(rx, 125, rw, 40, 5, panelColor);
+  tft.drawRoundRect(rx, 125, rw, 40, 5, borderColor);
+  tft.drawString("Gap Ahead", rx + rw / 2, 127, 1);
 
   // Gap Behind
-  tft.fillRoundRect(rx, 170, rw, 40, 5, 0x1082);
-  tft.drawRoundRect(rx, 170, rw, 40, 5, 0x4208);
-  tft.drawString("Gap Behind", rx + rw/2, 172, 1);
+  tft.fillRoundRect(rx, 170, rw, 40, 5, panelColor);
+  tft.drawRoundRect(rx, 170, rw, 40, 5, borderColor);
+  tft.drawString("Gap Behind", rx + rw / 2, 172, 1);
 
   // Laps (Current, Best, Last)
-  tft.setTextColor(0xFFFF, 0x0000);
+  tft.setTextColor(textColor, bgColor);
   tft.setTextDatum(ML_DATUM);
-  tft.drawString("Current Lap:", rx, 220, 1);
-  tft.drawString("Best:", rx, 250, 1);
-  tft.drawString("Last:", rx, 280, 1);
+  tft.drawString("Current Lap:", rx - 40, 240, 1); // setting layout
+  tft.drawString("Best:", rx, 270, 1);
+  tft.drawString("Last:", rx, 300, 1);
 }
 
 void updateDynamicData() {
   tft.setTextDatum(MC_DATUM);
+
+  uint16_t accentColor = 0x07FF; // Cyan
+  uint16_t panelTextColor = 0xFFFF;
+  uint16_t bgColor = 0x0000;
+  uint16_t panelColor = 0x1082;
+
+  if (mode == 2) {        // Eco
+    accentColor = 0x0000; // Black text on green
+    panelTextColor = 0x0000;
+    bgColor = 0x064D;
+    panelColor = 0x054A;
+  } else if (mode == 1) { // Sport
+    accentColor = 0xF800; // Red
+    panelTextColor = 0xFFFF;
+    bgColor = 0x0000;
+    panelColor = 0x1082;
+  } else {                // Normal
+    accentColor = 0x07FF; // Cyan
+    panelTextColor = 0xFFFF;
+    bgColor = 0x0000;
+    panelColor = 0x1082;
+  }
 
   // --- 1. Rev Bar (Shift Lights) ---
   int revX = 100;
@@ -1769,43 +1822,45 @@ void updateDynamicData() {
   int revW = 15;
   int revH = 15;
   int revGap = 4;
-  
+
   int activeSegments = map(simRPM, 5000, 12000, 0, 15);
   activeSegments = constrain(activeSegments, 0, 15);
-  
+
   for (int i = 0; i < 15; i++) {
     uint16_t color = 0x4208; // Off color
     if (i < activeSegments) {
-      if (i < 5) color = 0x07E0; // Green
-      else if (i < 10) color = 0xF800; // Red
-      else color = 0x07FF; // Cyan
+      if (i < 5)
+        color = 0x07E0; // Green
+      else if (i < 10)
+        color = 0xF800; // Red
+      else
+        color = 0x07FF; // Cyan
     }
     tft.fillRoundRect(revX + (i * (revW + revGap)), revY, revW, revH, 2, color);
   }
 
   // --- 2. Speed & RPM ---
-  tft.setTextColor(0x07FF, 0x1082); // Cyan on Dark Grey
+  tft.setTextColor(accentColor, panelColor);
   tft.setTextPadding(80);
   tft.drawString(String((int)simSpeed), 75, 60, 4);
 
-  tft.setTextColor(0xFFFF, 0x1082); // White on Dark Grey
+  tft.setTextColor(panelTextColor, panelColor);
   tft.setTextPadding(100);
   tft.drawString(String((int)simRPM), 205, 60, 4);
 
   // --- 3. Gear ---
-  static int previousSimGear = -1;
   if (simGear != previousSimGear) {
     tft.setFreeFont(&FreeMono18pt7b);
     tft.setTextSize(4); // Huge!
-    
+
     // Clear the old gear area (Gear is at 280, 140 center datum)
-    tft.fillRect(250, 100, 60, 80, 0x0000); // Black box
-    
-    tft.setTextColor(0x07FF); // Cyan
+    tft.fillRect(250, 100, 60, 80, bgColor);
+
+    tft.setTextColor(accentColor);
     tft.drawString(String(simGear), 280, 140);
-    
+
     previousSimGear = simGear;
-    
+
     // Reset font
     tft.setFreeFont(NULL);
     tft.setTextSize(1);
@@ -1817,63 +1872,64 @@ void updateDynamicData() {
   tft.setTextPadding(100);
 
   // Fuel
-  tft.setTextColor(0x07E0, 0x1082); // Green on Dark Grey
-  tft.drawString(String(simFuel), rx + rw/2, 55, 2);
+  tft.setTextColor(0x07E0, panelColor); // Green for fuel
+  tft.drawString(String(simFuel), rx + rw / 2, 55, 2);
 
   // Fuel Est
-  tft.drawString("12.1", rx + rw/2, 100, 2);
+  tft.setTextColor(panelTextColor, panelColor);
+  tft.drawString("12.1", rx + rw / 2, 100, 2);
 
   // Gaps
-  tft.setTextColor(0xFFFF, 0x1082); // White on Dark Grey
-  tft.drawString("+" + String(simGapAhead, 2), rx + rw/2, 145, 2);
-  tft.drawString("-" + String(simGapBehind, 2), rx + rw/2, 190, 2);
+  tft.setTextColor(panelTextColor, panelColor);
+  tft.drawString("+" + String(simGapAhead, 2), rx + rw / 2, 145, 2);
+  tft.drawString("-" + String(simGapBehind, 2), rx + rw / 2, 190, 2);
 
   // Lap Times
   tft.setTextPadding(0);
   tft.setTextDatum(MR_DATUM);
-  
-  tft.setTextColor(0xF800, 0x0000); // Red on Black
-  tft.drawString("01:12:378", 460, 220, 2);
-  
-  tft.setTextColor(0x07E0, 0x0000); // Green on Black
-  tft.drawString("01:30:378", 460, 250, 2);
-  
-  tft.setTextColor(0xFFFF, 0x0000); // White on Black
-  tft.drawString("01:12:378", 460, 280, 2);
+
+  tft.setTextColor(0xF800, bgColor); // Red
+  tft.drawString("01:12:378", 460, 240, 2);
+
+  tft.setTextColor(0x07E0, bgColor); // Green
+  tft.drawString("01:30:378", 460, 270, 2);
+
+  tft.setTextColor(panelTextColor, bgColor);
+  tft.drawString("01:12:378", 460, 300, 2);
 
   // --- 5. Bottom Left Data ---
   tft.setTextDatum(MC_DATUM);
   tft.setTextPadding(80);
-  
+
   // Time
-  tft.setTextColor(0x07FF, 0x1082); // Cyan
+  tft.setTextColor(accentColor, panelColor);
   tft.drawString("01:04:32", 70, 260, 2);
 
   // Pos
-  tft.setTextColor(0x03DF, 0x1082); // Blue
+  tft.setTextColor(0x03DF, panelColor); // Blue
   tft.drawString("12", 145, 260, 2);
 
   // SC
-  tft.setTextColor(0xFFE0, 0x1082); // Yellow
+  tft.setTextColor(0xFFE0, panelColor); // Yellow
   tft.drawString("VSC", 210, 260, 2);
 
   // Lap
   tft.setTextPadding(40);
-  tft.setTextColor(0xF800, 0x1082); // Red
+  tft.setTextColor(0xF800, panelColor); // Red
   tft.drawString("14", 45, 300, 2);
 
   // Total
   tft.setTextPadding(60);
+  tft.setTextColor(panelTextColor, panelColor);
   tft.drawString("14", 110, 300, 2);
 
   // Delta
   tft.setTextPadding(80);
-  tft.setTextColor(0xFFE0, 0x1082); // Yellow
+  tft.setTextColor(0xFFE0, panelColor); // Yellow
   tft.drawString("+1.045", 200, 300, 2);
 
   tft.setTextPadding(0);
 }
-
 
 /*
  * Copyright (c) 2004, 2005 by
@@ -1894,11 +1950,11 @@ extern "C" {
 
 #ifdef ___int8_t_defined
 #ifndef _INT8_T_DECLARED
-typedef __int8_t int8_t ;
+typedef __int8_t int8_t;
 #define _INT8_T_DECLARED
 #endif
 #ifndef _UINT8_T_DECLARED
-typedef __uint8_t uint8_t ;
+typedef __uint8_t uint8_t;
 #define _UINT8_T_DECLARED
 #endif
 #define __int8_t_defined 1
@@ -1906,11 +1962,11 @@ typedef __uint8_t uint8_t ;
 
 #ifdef ___int16_t_defined
 #ifndef _INT16_T_DECLARED
-typedef __int16_t int16_t ;
+typedef __int16_t int16_t;
 #define _INT16_T_DECLARED
 #endif
 #ifndef _UINT16_T_DECLARED
-typedef __uint16_t uint16_t ;
+typedef __uint16_t uint16_t;
 #define _UINT16_T_DECLARED
 #endif
 #define __int16_t_defined 1
@@ -1918,11 +1974,11 @@ typedef __uint16_t uint16_t ;
 
 #ifdef ___int32_t_defined
 #ifndef _INT32_T_DECLARED
-typedef __int32_t int32_t ;
+typedef __int32_t int32_t;
 #define _INT32_T_DECLARED
 #endif
 #ifndef _UINT32_T_DECLARED
-typedef __uint32_t uint32_t ;
+typedef __uint32_t uint32_t;
 #define _UINT32_T_DECLARED
 #endif
 #define __int32_t_defined 1
@@ -1930,11 +1986,11 @@ typedef __uint32_t uint32_t ;
 
 #ifdef ___int64_t_defined
 #ifndef _INT64_T_DECLARED
-typedef __int64_t int64_t ;
+typedef __int64_t int64_t;
 #define _INT64_T_DECLARED
 #endif
 #ifndef _UINT64_T_DECLARED
-typedef __uint64_t uint64_t ;
+typedef __uint64_t uint64_t;
 #define _UINT64_T_DECLARED
 #endif
 #define __int64_t_defined 1
