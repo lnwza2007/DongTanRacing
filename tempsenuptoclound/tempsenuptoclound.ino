@@ -6,7 +6,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h> 
 #include <WiFiClientSecure.h> 
-#include <PubSubClient.h>     
+#include <PubSubClient.h>
 
 // --- 1. ตั้งค่า WiFi ---
 #define WIFI_SSID "Frankza"
